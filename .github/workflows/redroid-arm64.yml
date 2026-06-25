@@ -1,0 +1,40 @@
+name: 🚀 Redroid Samsung A15 ARM64 Native
+
+on:
+  workflow_dispatch:
+
+jobs:
+  arm-redroid:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 360
+
+    steps:
+      - name: ✅ Environment Check
+        run: |
+          echo "Architecture: $(uname -m)"
+          echo "CPUs: $(nproc)"
+          echo "RAM: $(free -h)"
+          echo "Docker: $(docker --version)"
+
+      - name: 🔧 Install Dependencies + Binder
+        run: |
+          sudo apt update && sudo apt upgrade -y
+          sudo apt install -y docker.io adb unzip wget curl
+          sudo usermod -aG docker $USER
+          sudo apt install -y linux-modules-extra-$(uname -r)
+          
+          # Binder Modules (مهم جداً لـ ADB)
+          sudo modprobe binder_linux devices=binder,hwbinder,vndbinder || true
+          echo "binder_linux" | sudo tee /etc/modules-load.d/redroid.conf
+          echo "options binder_linux devices=binder,hwbinder,vndbinder" | sudo tee /etc/modprobe.d/redroid.conf
+
+      - name: 📥 Download MindTheGapps ARM64 (الرابط الصحيح)
+        run: |
+          wget https://github.com/MindTheGapps/14.0.0-arm64/releases/latest/download/MindTheGapps-14.0.0-arm64.zip -O gapps.zip
+          ls -lh gapps.zip
+
+      - name: 🔗 Open tmate SSH Session (هنا هتكمل يدوي)
+        uses: mxschmitt/action-tmate@v3
+        with:
+          limit-access-to-actor: false
+          timeout-minutes: 360
