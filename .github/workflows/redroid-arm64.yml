@@ -1,4 +1,45 @@
-- name: 📱 Start Samsung A15
+name: 🚀 RM64 workflow for Samsung A15
+
+on:
+  workflow_dispatch:
+
+jobs:
+  arm-redroid:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 360
+
+    steps:
+      - name: ✅ Environment Check
+        run: |
+          echo "Architecture: $(uname -m)"
+          echo "CPUs: $(nproc)"
+          echo "RAM: $(free -h)"
+
+      - name: 🔧 Install Dependencies + Binder
+        run: |
+          sudo apt update
+          sudo apt remove -y --purge containerd.io || true
+          sudo apt autoremove -y
+          sudo apt install -y docker.io adb unzip wget curl
+          sudo systemctl enable --now docker
+          sudo chmod 666 /var/run/docker.sock
+          sudo apt install -y linux-modules-extra-$(uname -r)
+          sudo modprobe binder_linux devices=binder,hwbinder,vndbinder || true
+
+      - name: 📥 Download GApps + Build Image
+        run: |
+          wget https://github.com/MindTheGapps/14.0.0-arm64/releases/download/MindTheGapps-14.0.0-arm64-20250203_200051/MindTheGapps-14.0.0-arm64-20250203_200051.zip -O gapps.zip
+          cat > Dockerfile << 'EOF'
+          FROM ubuntu:22.04 as extractor
+          RUN apt-get update && apt-get install -y unzip
+          ADD gapps.zip /gapps.zip
+          RUN mkdir -p /tmp/gapps && unzip /gapps.zip -d /tmp/gapps
+          FROM redroid/redroid:14.0.0-latest
+          COPY --from=extractor /tmp/gapps/system/ /system/
+          EOF
+          sudo docker build -t redroid-a15-arm .
+
+      - name: 📱 Start Samsung A15
         timeout-minutes: 8
         run: |
           sudo docker run -itd --privileged --name samsung_a15 \
@@ -93,3 +134,12 @@
             sudo docker logs samsung_a15 || true
             exit 1
           fi
+
+      - name: 🌐 Open Cloudflare Tunnel (ADB)
+        run: |
+          wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm64 -O cloudflared
+          chmod +x cloudflared
+          ./cloudflared tunnel --url tcp://localhost:5555 &
+          sleep 8
+          echo "✅ Tunnel is running - check logs above for URL"
+          sleep 20000
