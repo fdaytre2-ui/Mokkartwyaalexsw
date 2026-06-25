@@ -1,32 +1,27 @@
 name: ARM64 Interactive Session
 
 on:
-  workflow_dispatch:  # تشغيل يدوي بضغطة زر
+  workflow_dispatch:
 
 jobs:
   arm-shell:
-    runs-on: ubuntu-24.04-arm    # ← 4 vCPU + 16GB RAM ARM64 مجاناً
-    timeout-minutes: 360         # 6 ساعات كحد أقصى
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 360
 
     steps:
-      - name: 🔧 Setup Docker & Essential Tools
+      - name: 🔧 Check Environment
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y docker.io curl wget git nano htop
-          sudo systemctl start docker
-          sudo usermod -aG docker $USER
-          echo "✅ Docker version: $(docker --version)"
           echo "✅ Architecture: $(uname -m)"
-          echo "✅ RAM: $(free -h | grep Mem)"
           echo "✅ CPUs: $(nproc)"
+          echo "✅ RAM: $(free -h | grep Mem)"
+          echo "✅ Docker: $(docker --version)"
+          sudo systemctl start docker || true
+          sudo chmod 666 /var/run/docker.sock
 
       - name: 🌐 Open SSH Tunnel via Ngrok
         uses: tmshkr/ngrok-ssh@latest
         with:
           NGROK_AUTHTOKEN: ${{ secrets.NGROK_AUTHTOKEN }}
 
-      - name: ⏳ Keep Session Alive (6 hours)
-        run: |
-          echo "🟢 Session is LIVE — check Ngrok dashboard for SSH address"
-          echo "🔗 https://dashboard.ngrok.com/tunnels"
-          sleep 21000
+      - name: ⏳ Keep Session Alive
+        run: sleep 21000
