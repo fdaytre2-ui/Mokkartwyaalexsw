@@ -1,42 +1,5 @@
-name: 🚀 Redroid Samsung A15 ARM64 Native
-on:
-  workflow_dispatch:
-jobs:
-  arm-redroid:
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 360
-    steps:
-      - name: ✅ Environment Check
-        run: |
-          echo "Architecture: $(uname -m)"
-          echo "CPUs: $(nproc)"
-          echo "RAM: $(free -h)"
-
-      - name: 🔧 Install Dependencies + Binder
-        run: |
-          sudo apt update
-          sudo apt remove -y --purge containerd.io || true
-          sudo apt autoremove -y
-          sudo apt install -y docker.io adb unzip wget curl
-          sudo systemctl enable --now docker
-          sudo chmod 666 /var/run/docker.sock
-          sudo apt install -y linux-modules-extra-$(uname -r)
-          sudo modprobe binder_linux devices=binder,hwbinder,vndbinder || true
-
-      - name: 📥 Download GApps + Build Image
-        run: |
-          wget https://github.com/MindTheGapps/14.0.0-arm64/releases/download/MindTheGapps-14.0.0-arm64-20250203_200051/MindTheGapps-14.0.0-arm64-20250203_200051.zip -O gapps.zip
-          cat > Dockerfile << 'EOF'
-          FROM ubuntu:22.04 as extractor
-          RUN apt-get update && apt-get install -y unzip
-          ADD gapps.zip /gapps.zip
-          RUN mkdir -p /tmp/gapps && unzip /gapps.zip -d /tmp/gapps
-          FROM redroid/redroid:14.0.0-latest
-          COPY --from=extractor /tmp/gapps/system/ /system/
-          EOF
-          sudo docker build -t redroid-a15-arm .
-
-      - name: 📱 Start Samsung A15
+- name: 📱 Start Samsung A15
+        timeout-minutes: 8
         run: |
           sudo docker run -itd --privileged --name samsung_a15 \
             -v ~/redroid_a15_data:/data \
@@ -53,10 +16,6 @@ jobs:
             ro.build.fingerprint=samsung/a15nsxx/a15:14/UP1A.231005.007/A155FXXU1AXA2:user/release-keys \
             ro.build.tags=release-keys \
             ro.build.type=user \
-            ro.hardware=mt6789 \
-            ro.board.platform=k6789v1_64 \
-            ro.soc.model=MT6789 \
-            ro.boot.verifiedbootstate=green \
             ro.dalvik.vm.native.bridge=0 \
             ro.adb.secure=0 \
             ro.secure=0 \
@@ -70,8 +29,8 @@ jobs:
               sudo docker logs samsung_a15 || true
               exit 1
             fi
-            adb connect localhost:5555 >/dev/null 2>&1 || true
-            STATE=$(adb -s localhost:5555 get-state 2>/dev/null || echo "none")
+            timeout 10 adb connect localhost:5555 >/dev/null 2>&1 || true
+            STATE=$(timeout 10 adb -s localhost:5555 get-state 2>/dev/null || echo "none")
             echo "Attempt $i/20: state=$STATE"
             if [ "$STATE" = "device" ]; then
               echo "✅ Device is online"
@@ -86,9 +45,9 @@ jobs:
             exit 1
           fi
 
-          # استنى شوية كمان لحد ما الـ boot يخلص فعليًا (bootanim يقف)
+          BOOT_COMPLETED="0"
           for i in $(seq 1 15); do
-            BOOT_COMPLETED=$(adb -s localhost:5555 shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
+            BOOT_COMPLETED=$(timeout 10 adb -s localhost:5555 shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
             echo "Boot check $i/15: sys.boot_completed=$BOOT_COMPLETED"
             if [ "$BOOT_COMPLETED" = "1" ]; then
               echo "✅ Boot completed"
@@ -97,10 +56,16 @@ jobs:
             sleep 5
           done
 
-          adb -s localhost:5555 shell settings put global device_provisioned 1
-          adb -s localhost:5555 shell settings put secure user_setup_complete 1
-          adb -s localhost:5555 shell pm disable-user --user 0 com.google.android.setupwizard || true
-          adb -s localhost:5555 shell settings put system screen_off_timeout 1800000
+          if [ "$BOOT_COMPLETED" != "1" ]; then
+            echo "⚠️ Boot never reported completed. Container logs:"
+            sudo docker logs --tail 100 samsung_a15 || true
+            exit 1
+          fi
+
+          timeout 10 adb -s localhost:5555 shell settings put global device_provisioned 1 || true
+          timeout 10 adb -s localhost:5555 shell settings put secure user_setup_complete 1 || true
+          timeout 10 adb -s localhost:5555 shell pm disable-user --user 0 com.google.android.setupwizard || true
+          timeout 10 adb -s localhost:5555 shell settings put system screen_off_timeout 1800000 || true
 
           echo "🔁 Restarting container to apply settings..."
           sudo docker restart samsung_a15
@@ -113,8 +78,8 @@ jobs:
               sudo docker logs samsung_a15 || true
               exit 1
             fi
-            adb connect localhost:5555 >/dev/null 2>&1 || true
-            STATE=$(adb -s localhost:5555 get-state 2>/dev/null || echo "none")
+            timeout 10 adb connect localhost:5555 >/dev/null 2>&1 || true
+            STATE=$(timeout 10 adb -s localhost:5555 get-state 2>/dev/null || echo "none")
             echo "Attempt $i/20: state=$STATE"
             if [ "$STATE" = "device" ]; then
               echo "✅ Device is back online after restart"
@@ -128,12 +93,3 @@ jobs:
             sudo docker logs samsung_a15 || true
             exit 1
           fi
-
-      - name: 🌐 Open Cloudflare Tunnel (ADB)
-        run: |
-          wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm64 -O cloudflared
-          chmod +x cloudflared
-          ./cloudflared tunnel --url tcp://localhost:5555 &
-          sleep 8
-          echo "✅ Tunnel is running - check logs above for URL"
-          sleep 20000
