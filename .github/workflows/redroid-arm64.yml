@@ -14,22 +14,24 @@ jobs:
           echo "Architecture: $(uname -m)"
           echo "CPUs: $(nproc)"
           echo "RAM: $(free -h)"
-          echo "Docker: $(docker --version)"
+          echo "Docker: $(docker --version || echo 'not installed')"
 
-      - name: 🔧 Fix Docker Conflict & Install Dependencies
+      - name: 🔧 Clean Docker Conflicts + Install
         run: |
           sudo apt update
           
-          # إزالة التعارضات أولاً (مهم جداً)
-          sudo apt remove -y docker.io containerd || true
-          sudo apt purge -y docker.io containerd || true
+          # تنظيف قوي لكل التعارضات
+          sudo apt remove -y --purge docker.io docker-ce docker-ce-cli containerd.io containerd runc docker-compose || true
           sudo apt autoremove -y
+          sudo rm -rf /var/lib/docker /var/lib/containerd || true
           
+          # تثبيت docker.io من جديد
           sudo apt install -y docker.io adb unzip wget curl
           sudo usermod -aG docker $USER
-          sudo apt install -y linux-modules-extra-$(uname -r)
+          sudo systemctl enable --now docker
           
-          # Binder Modules
+          # Binder Modules (مهم لـ Redroid)
+          sudo apt install -y linux-modules-extra-$(uname -r)
           sudo modprobe binder_linux devices=binder,hwbinder,vndbinder || true
           echo "binder_linux" | sudo tee /etc/modules-load.d/redroid.conf
           echo "options binder_linux devices=binder,hwbinder,vndbinder" | sudo tee /etc/modprobe.d/redroid.conf
