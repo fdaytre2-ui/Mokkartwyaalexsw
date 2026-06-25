@@ -14,31 +14,78 @@ jobs:
           echo "Architecture: $(uname -m)"
           echo "CPUs: $(nproc)"
           echo "RAM: $(free -h)"
-          echo "Docker: $(docker --version || echo 'not installed')"
 
-      - name: 🔧 Clean Docker + Install Dependencies
+      - name: 🔧 Install Dependencies + Binder
         run: |
           sudo apt update
-          sudo apt remove -y --purge docker.io docker-ce containerd.io containerd || true
-          sudo apt autoremove -y
-          sudo rm -rf /var/lib/docker /var/lib/containerd || true
-          
           sudo apt install -y docker.io adb unzip wget curl
-          sudo usermod -aG docker $USER
           sudo systemctl enable --now docker
-          
           sudo apt install -y linux-modules-extra-$(uname -r)
           sudo modprobe binder_linux devices=binder,hwbinder,vndbinder || true
-          echo "binder_linux" | sudo tee /etc/modules-load.d/redroid.conf
-          echo "options binder_linux devices=binder,hwbinder,vndbinder" | sudo tee /etc/modprobe.d/redroid.conf
 
-      - name: 📥 Download MindTheGapps ARM64 (الرابط الصحيح)
+      - name: 📥 Download GApps + Build Image
         run: |
           wget https://github.com/MindTheGapps/14.0.0-arm64/releases/download/MindTheGapps-14.0.0-arm64-20250203_200051/MindTheGapps-14.0.0-arm64-20250203_200051.zip -O gapps.zip
-          ls -lh gapps.zip
 
-      - name: 🔗 Open tmate SSH Session
-        uses: mxschmitt/action-tmate@v3
-        with:
-          limit-access-to-actor: false
-          timeout-minutes: 360
+          cat > Dockerfile << 'EOF'
+          FROM ubuntu:22.04 as extractor
+          RUN apt-get update && apt-get install -y unzip
+          ADD gapps.zip /gapps.zip
+          RUN mkdir -p /tmp/gapps && unzip /gapps.zip -d /tmp/gapps
+          FROM redroid/redroid:14.0.0-latest
+          COPY --from=extractor /tmp/gapps/system/ /system/
+          EOF
+
+          sudo docker build -t redroid-a15-arm .
+
+      - name: 📱 Start Samsung A15
+        run: |
+          sudo docker run -itd --privileged --name samsung_a15 \
+            -v ~/redroid_a15_data:/data \
+            -p 5555:5555 \
+            redroid-a15-arm \
+            androidboot.redroid_width=1080 \
+            androidboot.redroid_height=2340 \
+            androidboot.redroid_dpi=396 \
+            ro.product.model=SM-A155F \
+            ro.product.brand=samsung \
+            ro.product.manufacturer=samsung \
+            ro.product.device=a15 \
+            ro.product.name=a15nsxx \
+            ro.build.fingerprint=samsung/a15nsxx/a15:14/UP1A.231005.007/A155FXXU1AXA2:user/release-keys \
+            ro.build.tags=release-keys \
+            ro.build.type=user \
+            ro.hardware=mt6789 \
+            ro.board.platform=k6789v1_64 \
+            ro.soc.model=MT6789 \
+            ro.boot.verifiedbootstate=green \
+            ro.dalvik.vm.native.bridge=0 \
+            ro.adb.secure=0 \
+            ro.secure=0 \
+            ro.debuggable=1
+
+          sleep 15
+
+          adb connect localhost:5555
+          adb -s localhost:5555 shell settings put global device_provisioned 1
+          adb -s localhost:5555 shell settings put secure user_setup_complete 1
+          adb -s localhost:5555 shell pm disable-user --user 0 com.google.android.setupwizard || true
+          adb -s localhost:5555 shell settings put system screen_off_timeout 1800000
+
+          sudo docker restart samsung_a15
+          sleep 12
+          adb connect localhost:5555
+
+      - name: 🌐 Open Cloudflare Tunnel (ADB)
+        run: |
+          wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm64 -O cloudflared
+          chmod +x cloudflared
+
+          ./cloudflared tunnel --url tcp://localhost:5555 &
+          sleep 8
+
+          # الرابط هيظهر في الـ logs
+          echo "✅ Tunnel is running - check logs above for URL"
+          
+          # خلي الـ job شغال
+          sleep 20000
