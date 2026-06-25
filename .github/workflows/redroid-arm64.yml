@@ -16,24 +16,30 @@ jobs:
           echo "RAM: $(free -h)"
           echo "Docker: $(docker --version)"
 
-      - name: 🔧 Install Dependencies + Binder
+      - name: 🔧 Fix Docker Conflict & Install Dependencies
         run: |
-          sudo apt update && sudo apt upgrade -y
+          sudo apt update
+          
+          # إزالة التعارضات أولاً (مهم جداً)
+          sudo apt remove -y docker.io containerd || true
+          sudo apt purge -y docker.io containerd || true
+          sudo apt autoremove -y
+          
           sudo apt install -y docker.io adb unzip wget curl
           sudo usermod -aG docker $USER
           sudo apt install -y linux-modules-extra-$(uname -r)
           
-          # Binder Modules (مهم جداً لـ ADB)
+          # Binder Modules
           sudo modprobe binder_linux devices=binder,hwbinder,vndbinder || true
           echo "binder_linux" | sudo tee /etc/modules-load.d/redroid.conf
           echo "options binder_linux devices=binder,hwbinder,vndbinder" | sudo tee /etc/modprobe.d/redroid.conf
 
-      - name: 📥 Download MindTheGapps ARM64 (الرابط الصحيح)
+      - name: 📥 Download MindTheGapps ARM64
         run: |
           wget https://github.com/MindTheGapps/14.0.0-arm64/releases/latest/download/MindTheGapps-14.0.0-arm64.zip -O gapps.zip
           ls -lh gapps.zip
 
-      - name: 🔗 Open tmate SSH Session (هنا هتكمل يدوي)
+      - name: 🔗 Open tmate SSH Session
         uses: mxschmitt/action-tmate@v3
         with:
           limit-access-to-actor: false
