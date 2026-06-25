@@ -16,29 +16,25 @@ jobs:
           echo "RAM: $(free -h)"
           echo "Docker: $(docker --version || echo 'not installed')"
 
-      - name: 🔧 Clean Docker Conflicts + Install
+      - name: 🔧 Clean Docker + Install Dependencies
         run: |
           sudo apt update
-          
-          # تنظيف قوي لكل التعارضات
-          sudo apt remove -y --purge docker.io docker-ce docker-ce-cli containerd.io containerd runc docker-compose || true
+          sudo apt remove -y --purge docker.io docker-ce containerd.io containerd || true
           sudo apt autoremove -y
           sudo rm -rf /var/lib/docker /var/lib/containerd || true
           
-          # تثبيت docker.io من جديد
           sudo apt install -y docker.io adb unzip wget curl
           sudo usermod -aG docker $USER
           sudo systemctl enable --now docker
           
-          # Binder Modules (مهم لـ Redroid)
           sudo apt install -y linux-modules-extra-$(uname -r)
           sudo modprobe binder_linux devices=binder,hwbinder,vndbinder || true
           echo "binder_linux" | sudo tee /etc/modules-load.d/redroid.conf
           echo "options binder_linux devices=binder,hwbinder,vndbinder" | sudo tee /etc/modprobe.d/redroid.conf
 
-      - name: 📥 Download MindTheGapps ARM64
+      - name: 📥 Download MindTheGapps ARM64 (الرابط الصحيح)
         run: |
-          wget https://github.com/MindTheGapps/14.0.0-arm64/releases/latest/download/MindTheGapps-14.0.0-arm64.zip -O gapps.zip
+          wget https://github.com/MindTheGapps/14.0.0-arm64/releases/download/MindTheGapps-14.0.0-arm64-20250203_200051/MindTheGapps-14.0.0-arm64-20250203_200051.zip -O gapps.zip
           ls -lh gapps.zip
 
       - name: 🔗 Open tmate SSH Session
