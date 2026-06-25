@@ -18,8 +18,11 @@ jobs:
       - name: 🔧 Install Dependencies + Binder
         run: |
           sudo apt update
+          sudo apt remove -y --purge containerd.io || true
+          sudo apt autoremove -y
           sudo apt install -y docker.io adb unzip wget curl
           sudo systemctl enable --now docker
+          sudo chmod 666 /var/run/docker.sock
           sudo apt install -y linux-modules-extra-$(uname -r)
           sudo modprobe binder_linux devices=binder,hwbinder,vndbinder || true
 
