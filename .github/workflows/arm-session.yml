@@ -17,41 +17,8 @@ jobs:
           echo "Docker: $(docker --version)"
           sudo chmod 666 /var/run/docker.sock
 
-      - name: 🌐 Install Ngrok ARM64 & Open SSH Tunnel
-        env:
-          NGROK_AUTHTOKEN: ${{ secrets.NGROK_AUTHTOKEN }}
-        run: |
-          # تنزيل ngrok نسخة ARM64
-          wget -q https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-arm64.tgz
-          tar -xzf ngrok-v3-stable-linux-arm64.tgz
-          sudo mv ngrok /usr/local/bin/ngrok
-          
-          # إضافة الـ token
-          ngrok config add-authtoken $NGROK_AUTHTOKEN
-          
-          # تفعيل SSH
-          sudo systemctl enable ssh
-          sudo systemctl start ssh
-          
-          # تعيين باسورد للـ runner
-          echo "runner:arm64pass" | sudo chpasswd
-          sudo sed -i 's/PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config
-          sudo systemctl restart ssh
-          
-          # فتح النفق
-          ngrok tcp 22 &
-          sleep 5
-          
-          # طباعة عنوان الاتصال
-          curl -s http://localhost:4040/api/tunnels | python3 -c "
-          import sys,json
-          t = json.load(sys.stdin)['tunnels'][0]['public_url']
-          host = t.split('//')[1].split(':')[0]
-          port = t.split(':')[2]
-          print(f'🔗 SSH Command:')
-          print(f'ssh -p {port} runner@{host}')
-          print(f'Password: arm64pass')
-          "
-
-      - name: ⏳ Keep Session Alive
-        run: sleep 21000
+      - name: 🔗 Open tmate SSH Session
+        uses: mxschmitt/action-tmate@v3
+        with:
+          limit-access-to-actor: false
+        timeout-minutes: 360
