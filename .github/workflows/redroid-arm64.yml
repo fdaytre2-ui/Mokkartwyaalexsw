@@ -26,63 +26,29 @@ jobs:
           sudo apt install -y linux-modules-extra-$(uname -r)
           sudo modprobe binder_linux devices=binder,hwbinder,vndbinder || true
 
-      - name: 📥 Download GApps + Build Base Image
+      - name: 📥 Download GApps + Build Image
         run: |
           wget https://github.com/MindTheGapps/14.0.0-arm64/releases/download/MindTheGapps-14.0.0-arm64-20250203_200051/MindTheGapps-14.0.0-arm64-20250203_200051.zip -O gapps.zip
           cat > Dockerfile << 'EOF'
-          FROM ubuntu:22.04 AS extractor
+          FROM ubuntu:22.04 as extractor
           RUN apt-get update && apt-get install -y unzip
           ADD gapps.zip /gapps.zip
           RUN mkdir -p /tmp/gapps && unzip /gapps.zip -d /tmp/gapps
-          
           FROM redroid/redroid:14.0.0-latest
           COPY --from=extractor /tmp/gapps/system/ /system/
           EOF
           sudo docker build -t redroid-a15-arm .
 
-      - name: 🧬 Clone Hardware Configs (The Magic Trick)
-        run: |
-          echo "🔍 Searching and cloning hardware specific files..."
-          # تشغيل كونتينر مؤقت للبحث
-          docker run -itd --name temp_redroid redroid-a15-arm
-          sleep 5
-          
-          mkdir -p hw_configs
-          MOUNT_ARGS=""
-          
-          # البحث عن كل ملفات الإقلاع المرتبطة بريدرويد
-          FILES=$(docker exec temp_redroid find /vendor /system -name "*redroid*" -type f 2>/dev/null)
-          
-          for f in $FILES; do
-            filename=$(basename "$f")
-            # سحب الملف
-            docker cp "temp_redroid:$f" "hw_configs/$filename"
-            # تغيير مساره ليكون باسم المعالج الجديد
-            new_path=$(echo "$f" | sed 's/redroid/mt6789/g')
-            # تجهيز أمر الحقن
-            MOUNT_ARGS="$MOUNT_ARGS -v $(pwd)/hw_configs/$filename:$new_path:ro "
-            echo "✅ Cloned & Mapped: $filename -> $new_path"
-          done
-          
-          # حفظ أوامر الحقن للخطوة القادمة
-          echo "DOCKER_MOUNTS=$MOUNT_ARGS" >> $GITHUB_ENV
-          docker rm -f temp_redroid
-
-      - name: 📱 Start Samsung A15 (FUD Mode)
+      - name: 📱 Start Samsung A15
         timeout-minutes: 8
         run: |
           sudo docker run -itd --privileged --name samsung_a15 \
             -v ~/redroid_a15_data:/data \
-            $DOCKER_MOUNTS \
             -p 5555:5555 \
             redroid-a15-arm \
             androidboot.redroid_width=1080 \
             androidboot.redroid_height=2340 \
             androidboot.redroid_dpi=396 \
-            ro.hardware=mt6789 \
-            ro.boot.hardware=mt6789 \
-            ro.board.platform=k6789v1_64 \
-            ro.soc.model=MT6789 \
             ro.product.model=SM-A155F \
             ro.product.brand=samsung \
             ro.product.manufacturer=samsung \
@@ -170,34 +136,74 @@ jobs:
           STATE="none"
           for i in $(seq 1 20); do
             if ! sudo docker ps --format '{{.Names}}' | grep -q '^samsung_a15$'; then
-              echo "❌ Container crashed. Logs:"
+              echo "❌ Container is not running (crashed). Logs:"
               sudo docker logs samsung_a15 || true
               exit 1
             fi
             timeout 10 adb connect localhost:5555 >/dev/null 2>&1 || true
             STATE=$(timeout 10 adb -s localhost:5555 get-state 2>/dev/null || echo "none")
             echo "Attempt $i/20: state=$STATE"
-            [ "$STATE" = "device" ] && echo "✅ Device is online" && break
+            if [ "$STATE" = "device" ]; then
+              echo "✅ Device is online"
+              break
+            fi
             sleep 5
           done
-          [ "$STATE" != "device" ] && sudo docker logs samsung_a15 && exit 1
 
+          if [ "$STATE" != "device" ]; then
+            echo "❌ Device never reached 'device' state. Container logs:"
+            sudo docker logs samsung_a15 || true
+            exit 1
+          fi
+
+          BOOT_COMPLETED="0"
           for i in $(seq 1 15); do
-            BOOT=$(timeout 10 adb -s localhost:5555 shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
-            echo "Boot $i/15: $BOOT"
-            [ "$BOOT" = "1" ] && echo "✅ Boot completed" && break
+            BOOT_COMPLETED=$(timeout 10 adb -s localhost:5555 shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
+            echo "Boot check $i/15: sys.boot_completed=$BOOT_COMPLETED"
+            if [ "$BOOT_COMPLETED" = "1" ]; then
+              echo "✅ Boot completed"
+              break
+            fi
             sleep 5
           done
-          [ "$BOOT" != "1" ] && sudo docker logs --tail 100 samsung_a15 && exit 1
 
-          adb -s localhost:5555 shell settings put global device_provisioned 1 || true
-          adb -s localhost:5555 shell settings put secure user_setup_complete 1 || true
-          adb -s localhost:5555 shell pm disable-user --user 0 com.google.android.setupwizard || true
-          adb -s localhost:5555 shell settings put system screen_off_timeout 1800000 || true
+          if [ "$BOOT_COMPLETED" != "1" ]; then
+            echo "⚠️ Boot never reported completed. Container logs:"
+            sudo docker logs --tail 100 samsung_a15 || true
+            exit 1
+          fi
 
+          timeout 10 adb -s localhost:5555 shell settings put global device_provisioned 1 || true
+          timeout 10 adb -s localhost:5555 shell settings put secure user_setup_complete 1 || true
+          timeout 10 adb -s localhost:5555 shell pm disable-user --user 0 com.google.android.setupwizard || true
+          timeout 10 adb -s localhost:5555 shell settings put system screen_off_timeout 1800000 || true
+
+          echo "🔁 Restarting container to apply settings..."
           sudo docker restart samsung_a15
-          sleep 10
-          adb connect localhost:5555 || true
+
+          echo "⏳ Waiting for reconnect after restart..."
+          STATE="none"
+          for i in $(seq 1 20); do
+            if ! sudo docker ps --format '{{.Names}}' | grep -q '^samsung_a15$'; then
+              echo "❌ Container failed to restart. Logs:"
+              sudo docker logs samsung_a15 || true
+              exit 1
+            fi
+            timeout 10 adb connect localhost:5555 >/dev/null 2>&1 || true
+            STATE=$(timeout 10 adb -s localhost:5555 get-state 2>/dev/null || echo "none")
+            echo "Attempt $i/20: state=$STATE"
+            if [ "$STATE" = "device" ]; then
+              echo "✅ Device is back online after restart"
+              break
+            fi
+            sleep 5
+          done
+
+          if [ "$STATE" != "device" ]; then
+            echo "❌ Device never came back after restart. Container logs:"
+            sudo docker logs samsung_a15 || true
+            exit 1
+          fi
 
       - name: 🖥️ Start 60FPS Stream Server (ws-scrcpy)
         run: |
