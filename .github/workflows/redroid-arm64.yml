@@ -205,7 +205,7 @@ jobs:
             exit 1
           fi
 
-            - name: 🖥️ Start 60FPS Stream Server (ws-scrcpy)
+      - name: 🖥️ Start 60FPS Stream Server (ws-scrcpy)
         run: |
           # 1. تنظيف أي عمليات عالقة على بورت 8000
           sudo fuser -k 8000/tcp || true
@@ -227,7 +227,6 @@ jobs:
           wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm64 -O cloudflared
           chmod +x cloudflared
           
-          # تغيير البورت هنا للـ Tunnel لو احتجنا (لكن 8000 تمام)
           ./cloudflared tunnel --url http://localhost:8000 2>&1 | tee /tmp/cf.log &
 
           sleep 10
