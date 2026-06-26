@@ -20,11 +20,12 @@ jobs:
           sudo apt update
           sudo apt remove -y --purge containerd.io || true
           sudo apt autoremove -y
-          sudo apt install -y docker.io adb unzip wget curl
+          sudo apt install -y docker.io adb unzip wget curl python3-pip python3-pil
           sudo systemctl enable --now docker
           sudo chmod 666 /var/run/docker.sock
           sudo apt install -y linux-modules-extra-$(uname -r)
           sudo modprobe binder_linux devices=binder,hwbinder,vndbinder || true
+          pip3 install flask --break-system-packages
 
       - name: 📥 Download GApps + Build Image
         run: |
@@ -36,6 +37,7 @@ jobs:
           RUN mkdir -p /tmp/gapps && unzip /gapps.zip -d /tmp/gapps
           FROM redroid/redroid:14.0.0-latest
           COPY --from=extractor /tmp/gapps/system/ /system/
+          RUN cp /vendor/etc/init/init.redroid.rc /vendor/etc/init/init.mt6789.rc
           EOF
           sudo docker build -t redroid-a15-arm .
 
@@ -49,6 +51,10 @@ jobs:
             androidboot.redroid_width=1080 \
             androidboot.redroid_height=2340 \
             androidboot.redroid_dpi=396 \
+            ro.hardware=mt6789 \
+            ro.boot.hardware=mt6789 \
+            ro.board.platform=k6789v1_64 \
+            ro.soc.model=MT6789 \
             ro.product.model=SM-A155F \
             ro.product.brand=samsung \
             ro.product.manufacturer=samsung \
@@ -136,80 +142,153 @@ jobs:
           STATE="none"
           for i in $(seq 1 20); do
             if ! sudo docker ps --format '{{.Names}}' | grep -q '^samsung_a15$'; then
-              echo "❌ Container is not running (crashed). Logs:"
+              echo "❌ Container crashed. Logs:"
               sudo docker logs samsung_a15 || true
               exit 1
             fi
             timeout 10 adb connect localhost:5555 >/dev/null 2>&1 || true
             STATE=$(timeout 10 adb -s localhost:5555 get-state 2>/dev/null || echo "none")
             echo "Attempt $i/20: state=$STATE"
-            if [ "$STATE" = "device" ]; then
-              echo "✅ Device is online"
-              break
-            fi
+            [ "$STATE" = "device" ] && echo "✅ Device is online" && break
             sleep 5
           done
+          [ "$STATE" != "device" ] && sudo docker logs samsung_a15 && exit 1
 
-          if [ "$STATE" != "device" ]; then
-            echo "❌ Device never reached 'device' state. Container logs:"
-            sudo docker logs samsung_a15 || true
-            exit 1
-          fi
-
-          BOOT_COMPLETED="0"
           for i in $(seq 1 15); do
-            BOOT_COMPLETED=$(timeout 10 adb -s localhost:5555 shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
-            echo "Boot check $i/15: sys.boot_completed=$BOOT_COMPLETED"
-            if [ "$BOOT_COMPLETED" = "1" ]; then
-              echo "✅ Boot completed"
-              break
-            fi
+            BOOT=$(timeout 10 adb -s localhost:5555 shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
+            echo "Boot $i/15: $BOOT"
+            [ "$BOOT" = "1" ] && echo "✅ Boot completed" && break
             sleep 5
           done
+          [ "$BOOT" != "1" ] && sudo docker logs --tail 100 samsung_a15 && exit 1
 
-          if [ "$BOOT_COMPLETED" != "1" ]; then
-            echo "⚠️ Boot never reported completed. Container logs:"
-            sudo docker logs --tail 100 samsung_a15 || true
-            exit 1
-          fi
+          adb -s localhost:5555 shell settings put global device_provisioned 1 || true
+          adb -s localhost:5555 shell settings put secure user_setup_complete 1 || true
+          adb -s localhost:5555 shell pm disable-user --user 0 com.google.android.setupwizard || true
+          adb -s localhost:5555 shell settings put system screen_off_timeout 1800000 || true
 
-          timeout 10 adb -s localhost:5555 shell settings put global device_provisioned 1 || true
-          timeout 10 adb -s localhost:5555 shell settings put secure user_setup_complete 1 || true
-          timeout 10 adb -s localhost:5555 shell pm disable-user --user 0 com.google.android.setupwizard || true
-          timeout 10 adb -s localhost:5555 shell settings put system screen_off_timeout 1800000 || true
-
-          echo "🔁 Restarting container to apply settings..."
           sudo docker restart samsung_a15
+          sleep 10
+          adb connect localhost:5555 || true
 
-          echo "⏳ Waiting for reconnect after restart..."
-          STATE="none"
-          for i in $(seq 1 20); do
-            if ! sudo docker ps --format '{{.Names}}' | grep -q '^samsung_a15$'; then
-              echo "❌ Container failed to restart. Logs:"
-              sudo docker logs samsung_a15 || true
-              exit 1
-            fi
-            timeout 10 adb connect localhost:5555 >/dev/null 2>&1 || true
-            STATE=$(timeout 10 adb -s localhost:5555 get-state 2>/dev/null || echo "none")
-            echo "Attempt $i/20: state=$STATE"
-            if [ "$STATE" = "device" ]; then
-              echo "✅ Device is back online after restart"
-              break
-            fi
-            sleep 5
-          done
-
-          if [ "$STATE" != "device" ]; then
-            echo "❌ Device never came back after restart. Container logs:"
-            sudo docker logs samsung_a15 || true
-            exit 1
-          fi
-
-      - name: 🌐 Open Cloudflare Tunnel (ADB)
+      - name: 🖥️ Start Stream Server + Cloudflare
         run: |
+          cat > stream.py << 'PYEOF'
+          from flask import Flask, Response
+          import subprocess, threading, io, time
+          from PIL import Image
+
+          app = Flask(__name__)
+          latest = b''
+          lock = threading.Lock()
+
+          def capture():
+              global latest
+              while True:
+                  try:
+                      r = subprocess.run(
+                          ['adb','-s','localhost:5555','exec-out','screencap','-p'],
+                          capture_output=True, timeout=5
+                      )
+                      if r.stdout:
+                          img = Image.open(io.BytesIO(r.stdout))
+                          img = img.resize((540, 1200))
+                          buf = io.BytesIO()
+                          img.save(buf, 'JPEG', quality=60)
+                          with lock:
+                              latest = buf.getvalue()
+                  except:
+                      time.sleep(0.3)
+
+          threading.Thread(target=capture, daemon=True).start()
+
+          def gen():
+              while True:
+                  with lock:
+                      f = latest
+                  if f:
+                      yield b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + f + b'\r\n'
+                  time.sleep(0.1)
+
+          @app.route('/stream')
+          def stream():
+              return Response(gen(), mimetype='multipart/x-mixed-replace; boundary=frame')
+
+          @app.route('/')
+          def index():
+              return open('index.html').read()
+
+          @app.route('/tap/<int:x>/<int:y>')
+          def tap(x,y):
+              subprocess.Popen(['adb','-s','localhost:5555','shell','input','tap',str(x),str(y)])
+              return 'ok'
+
+          @app.route('/swipe/<int:x1>/<int:y1>/<int:x2>/<int:y2>/<int:d>')
+          def swipe(x1,y1,x2,y2,d):
+              subprocess.Popen(['adb','-s','localhost:5555','shell','input','swipe',
+                               str(x1),str(y1),str(x2),str(y2),str(d)])
+              return 'ok'
+
+          @app.route('/nav/<k>')
+          def nav(k):
+              keys={'back':'4','home':'3','recent':'187','vup':'24','vdn':'25'}
+              if k in keys:
+                  subprocess.Popen(['adb','-s','localhost:5555','shell','input','keyevent',keys[k]])
+              return 'ok'
+
+          app.run(host='0.0.0.0', port=8080, threaded=True)
+          PYEOF
+
+          cat > index.html << 'HTMLEOF'
+          <!DOCTYPE html><html><head>
+          <meta name="viewport" content="width=device-width,initial-scale=1">
+          <style>
+          *{margin:0;padding:0;box-sizing:border-box}
+          body{background:#000;display:flex;flex-direction:column;height:100vh}
+          #s{width:100%;flex:1;object-fit:contain;display:block}
+          #bar{display:flex;background:#111;padding:8px;gap:5px;position:fixed;bottom:0;width:100%}
+          button{flex:1;padding:12px;background:#333;color:#fff;border:none;border-radius:8px;font-size:20px}
+          button:active{background:#555}
+          </style></head><body>
+          <img id="s" src="/stream">
+          <div id="bar">
+          <button onclick="n('back')">◀</button>
+          <button onclick="n('home')">⬤</button>
+          <button onclick="n('recent')">▣</button>
+          <button onclick="n('vup')">🔊</button>
+          <button onclick="n('vdn')">🔉</button>
+          </div>
+          <script>
+          const img=document.getElementById('s');
+          let sx,sy,st;
+          img.addEventListener('touchstart',e=>{
+            e.preventDefault();
+            const t=e.touches[0],r=img.getBoundingClientRect();
+            sx=Math.round((t.clientX-r.left)*1080/r.width);
+            sy=Math.round((t.clientY-r.top)*2340/r.height);
+            st=Date.now();
+          },{passive:false});
+          img.addEventListener('touchend',e=>{
+            e.preventDefault();
+            const t=e.changedTouches[0],r=img.getBoundingClientRect();
+            const ex=Math.round((t.clientX-r.left)*1080/r.width);
+            const ey=Math.round((t.clientY-r.top)*2340/r.height);
+            const d=Date.now()-st;
+            if(Math.abs(ex-sx)>30||Math.abs(ey-sy)>30)
+              fetch('/swipe/'+sx+'/'+sy+'/'+ex+'/'+ey+'/'+d);
+            else fetch('/tap/'+ex+'/'+ey);
+          },{passive:false});
+          function n(k){fetch('/nav/'+k)}
+          </script></body></html>
+          HTMLEOF
+
+          python3 stream.py &
+          sleep 3
+
           wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm64 -O cloudflared
           chmod +x cloudflared
-          ./cloudflared tunnel --url tcp://localhost:5555 &
-          sleep 8
-          echo "✅ Tunnel is running - check logs above for URL"
+          ./cloudflared tunnel --url http://localhost:8080 2>&1 | tee /tmp/cf.log &
+          sleep 10
+          grep -o 'https://.*trycloudflare.com' /tmp/cf.log | head -1
+
           sleep 20000
