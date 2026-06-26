@@ -30,13 +30,17 @@ jobs:
         run: |
           wget https://github.com/MindTheGapps/14.0.0-arm64/releases/download/MindTheGapps-14.0.0-arm64-20250203_200051/MindTheGapps-14.0.0-arm64-20250203_200051.zip -O gapps.zip
           cat > Dockerfile << 'EOF'
-          FROM ubuntu:22.04 as extractor
+          FROM redroid/redroid:14.0.0-latest AS redroid_base
+
+          FROM ubuntu:22.04 AS extractor
           RUN apt-get update && apt-get install -y unzip
           ADD gapps.zip /gapps.zip
           RUN mkdir -p /tmp/gapps && unzip /gapps.zip -d /tmp/gapps
+          COPY --from=redroid_base /vendor/etc/init/init.redroid.rc /tmp/init.mt6789.rc
+
           FROM redroid/redroid:14.0.0-latest
           COPY --from=extractor /tmp/gapps/system/ /system/
-          RUN cp /vendor/etc/init/init.redroid.rc /vendor/etc/init/init.mt6789.rc
+          COPY --from=extractor /tmp/init.mt6789.rc /vendor/etc/init/init.mt6789.rc
           EOF
           sudo docker build -t redroid-a15-arm .
 
