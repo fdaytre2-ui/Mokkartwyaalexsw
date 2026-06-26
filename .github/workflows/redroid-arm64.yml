@@ -37,6 +37,10 @@ jobs:
           ADD gapps.zip /gapps.zip
           RUN mkdir -p /tmp/gapps && unzip /gapps.zip -d /tmp/gapps
           
+          # استنساخ كل مجلدات النظام الأساسية عشان نعدل فيها برحتنا هنا
+          COPY --from=redroid_base /system /tmp/system
+          COPY --from=redroid_base /vendor /tmp/vendor
+          
           # استنساخ ملفات الإقلاع والرسوميات بمعمارية سامسونج
           COPY --from=redroid_base /vendor/etc/init/init.redroid.rc /tmp/init.mt6789.rc
           COPY --from=redroid_base /vendor/lib/hw/gralloc.redroid.so /tmp/gralloc.mt6789.so
@@ -44,30 +48,33 @@ jobs:
           COPY --from=redroid_base /vendor/lib64/hw/gralloc.redroid.so /tmp/gralloc64.mt6789.so
           COPY --from=redroid_base /vendor/lib64/hw/hwcomposer.redroid.so /tmp/hwcomposer64.mt6789.so
 
-          FROM redroid/redroid:14.0.0-latest
-          COPY --from=extractor /tmp/gapps/system/ /system/
+          # 🚨 العمليات الجراحية لتنظيف الخصائص بالكامل 🚨
+          # 1. إصلاح الخصائص المفقودة في /vendor/build.prop
+          RUN sed -i 's/ro.hardware=redroid/ro.hardware=mt6789/g' /tmp/vendor/build.prop || true
+          RUN sed -i 's/ro.product.board=/ro.product.board=mt6789/g' /tmp/vendor/build.prop || true
+          RUN sed -i 's/ro.board.platform=/ro.board.platform=mt6789/g' /tmp/vendor/build.prop || true
           
-          # حقن الملفات الوهمية
+          # 2. تغيير أسماء الموديلات الصريحة في كل مكان
+          RUN find /tmp/system /tmp/vendor /tmp/gapps -type f -name "*.prop" -exec sed -i 's/redroid14_arm64/SM-A155F/g' {} + || true
+          RUN find /tmp/system /tmp/vendor /tmp/gapps -type f -name "*.prop" -exec sed -i 's/redroid_arm64/a15nsxx/g' {} + || true
+          
+          # 3. مسح أي كلمة redroid متبقية في جميع ملفات الخصائص واستبدالها بـ samsung
+          RUN find /tmp/system /tmp/vendor /tmp/gapps -type f -name "*.prop" -exec sed -i 's/redroid/samsung/gi' {} + || true
+
+          # بناء النظام النهائي بعد التنظيف
+          FROM redroid/redroid:14.0.0-latest
+          
+          # حقن النظام النظيف والـ GApps
+          COPY --from=extractor /tmp/gapps/system/ /system/
+          COPY --from=extractor /tmp/system/ /system/
+          COPY --from=extractor /tmp/vendor/ /vendor/
+          
+          # حقن ملفات الهاردوير الوهمية
           COPY --from=extractor /tmp/init.mt6789.rc /vendor/etc/init/init.mt6789.rc
           COPY --from=extractor /tmp/gralloc.mt6789.so /vendor/lib/hw/gralloc.mt6789.so
           COPY --from=extractor /tmp/hwcomposer.mt6789.so /vendor/lib/hw/hwcomposer.mt6789.so
           COPY --from=extractor /tmp/gralloc64.mt6789.so /vendor/lib64/hw/gralloc.mt6789.so
           COPY --from=extractor /tmp/hwcomposer64.mt6789.so /vendor/lib64/hw/hwcomposer.mt6789.so
-
-          USER root
-          
-          # 🚨 العمليات الجراحية لتنظيف الخصائص بالكامل 🚨
-          # 1. إصلاح الخصائص المفقودة في /vendor/build.prop
-          RUN sed -i 's/ro.hardware=redroid/ro.hardware=mt6789/g' /vendor/build.prop || true
-          RUN sed -i 's/ro.product.board=/ro.product.board=mt6789/g' /vendor/build.prop || true
-          RUN sed -i 's/ro.board.platform=/ro.board.platform=mt6789/g' /vendor/build.prop || true
-          
-          # 2. تغيير أسماء الموديلات الصريحة
-          RUN find /system /vendor /product /odm /system_ext -type f -name "*.prop" -exec sed -i 's/redroid14_arm64/SM-A155F/g' {} + || true
-          RUN find /system /vendor /product /odm /system_ext -type f -name "*.prop" -exec sed -i 's/redroid_arm64/a15nsxx/g' {} + || true
-          
-          # 3. مسح أي كلمة redroid متبقية في جميع ملفات الخصائص واستبدالها بـ samsung
-          RUN find /system /vendor /product /odm /system_ext -type f -name "*.prop" -exec sed -i 's/redroid/samsung/gi' {} + || true
           EOF
           sudo docker build -t redroid-a15-arm .
 
