@@ -26,29 +26,54 @@ jobs:
           sudo apt install -y linux-modules-extra-$(uname -r)
           sudo modprobe binder_linux devices=binder,hwbinder,vndbinder || true
 
-      - name: 📥 Download GApps + Build Image
+      - name: 📥 Download GApps + Build Base Image
         run: |
           wget https://github.com/MindTheGapps/14.0.0-arm64/releases/download/MindTheGapps-14.0.0-arm64-20250203_200051/MindTheGapps-14.0.0-arm64-20250203_200051.zip -O gapps.zip
           cat > Dockerfile << 'EOF'
-          FROM redroid/redroid:14.0.0-latest AS redroid_base
-
           FROM ubuntu:22.04 AS extractor
           RUN apt-get update && apt-get install -y unzip
           ADD gapps.zip /gapps.zip
           RUN mkdir -p /tmp/gapps && unzip /gapps.zip -d /tmp/gapps
-          COPY --from=redroid_base /vendor/etc/init/init.redroid.rc /tmp/init.mt6789.rc
-
+          
           FROM redroid/redroid:14.0.0-latest
           COPY --from=extractor /tmp/gapps/system/ /system/
-          COPY --from=extractor /tmp/init.mt6789.rc /vendor/etc/init/init.mt6789.rc
           EOF
           sudo docker build -t redroid-a15-arm .
 
-      - name: 📱 Start Samsung A15
+      - name: 🧬 Clone Hardware Configs (The Magic Trick)
+        run: |
+          echo "🔍 Searching and cloning hardware specific files..."
+          # تشغيل كونتينر مؤقت للبحث
+          docker run -itd --name temp_redroid redroid-a15-arm
+          sleep 5
+          
+          mkdir -p hw_configs
+          MOUNT_ARGS=""
+          
+          # البحث عن كل ملفات الإقلاع المرتبطة بريدرويد
+          FILES=$(docker exec temp_redroid find /vendor /system -name "*redroid*" -type f 2>/dev/null)
+          
+          for f in $FILES; do
+            filename=$(basename "$f")
+            # سحب الملف
+            docker cp "temp_redroid:$f" "hw_configs/$filename"
+            # تغيير مساره ليكون باسم المعالج الجديد
+            new_path=$(echo "$f" | sed 's/redroid/mt6789/g')
+            # تجهيز أمر الحقن
+            MOUNT_ARGS="$MOUNT_ARGS -v $(pwd)/hw_configs/$filename:$new_path:ro "
+            echo "✅ Cloned & Mapped: $filename -> $new_path"
+          done
+          
+          # حفظ أوامر الحقن للخطوة القادمة
+          echo "DOCKER_MOUNTS=$MOUNT_ARGS" >> $GITHUB_ENV
+          docker rm -f temp_redroid
+
+      - name: 📱 Start Samsung A15 (FUD Mode)
         timeout-minutes: 8
         run: |
           sudo docker run -itd --privileged --name samsung_a15 \
             -v ~/redroid_a15_data:/data \
+            $DOCKER_MOUNTS \
             -p 5555:5555 \
             redroid-a15-arm \
             androidboot.redroid_width=1080 \
