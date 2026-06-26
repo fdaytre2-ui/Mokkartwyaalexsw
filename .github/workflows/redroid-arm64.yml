@@ -20,22 +20,42 @@ jobs:
           sudo apt update
           sudo apt remove -y --purge containerd.io || true
           sudo apt autoremove -y
-          sudo apt install -y docker.io adb unzip wget curl
+          sudo apt install -y docker.io adb unzip wget curl tmate
           sudo systemctl enable --now docker
           sudo chmod 666 /var/run/docker.sock
           sudo apt install -y linux-modules-extra-$(uname -r)
           sudo modprobe binder_linux devices=binder,hwbinder,vndbinder || true
 
-      - name: 📥 Download GApps + Build Image
+      - name: 📥 Download GApps + Build Image (FUD Mode)
         run: |
           wget https://github.com/MindTheGapps/14.0.0-arm64/releases/download/MindTheGapps-14.0.0-arm64-20250203_200051/MindTheGapps-14.0.0-arm64-20250203_200051.zip -O gapps.zip
           cat > Dockerfile << 'EOF'
-          FROM ubuntu:22.04 as extractor
+          # 1. سحب الملفات الأصلية من ريدرويد
+          FROM redroid/redroid:14.0.0-latest AS redroid_base
+
+          # 2. بيئة العمل واستخراج GApps
+          FROM ubuntu:22.04 AS extractor
           RUN apt-get update && apt-get install -y unzip
           ADD gapps.zip /gapps.zip
           RUN mkdir -p /tmp/gapps && unzip /gapps.zip -d /tmp/gapps
+          
+          # 3. السحر الهندسي: استنساخ وتغيير أسماء تعريفات الشاشة وملف الإقلاع
+          COPY --from=redroid_base /vendor/etc/init/init.redroid.rc /tmp/init.mt6789.rc
+          COPY --from=redroid_base /vendor/lib/hw/gralloc.redroid.so /tmp/gralloc.mt6789.so
+          COPY --from=redroid_base /vendor/lib/hw/hwcomposer.redroid.so /tmp/hwcomposer.mt6789.so
+          COPY --from=redroid_base /vendor/lib64/hw/gralloc.redroid.so /tmp/gralloc64.mt6789.so
+          COPY --from=redroid_base /vendor/lib64/hw/hwcomposer.redroid.so /tmp/hwcomposer64.mt6789.so
+
+          # 4. بناء النظام النهائي
           FROM redroid/redroid:14.0.0-latest
           COPY --from=extractor /tmp/gapps/system/ /system/
+          
+          # 5. حقن الملفات الجاهزة داخل النظام الوهمي
+          COPY --from=extractor /tmp/init.mt6789.rc /vendor/etc/init/init.mt6789.rc
+          COPY --from=extractor /tmp/gralloc.mt6789.so /vendor/lib/hw/gralloc.mt6789.so
+          COPY --from=extractor /tmp/hwcomposer.mt6789.so /vendor/lib/hw/hwcomposer.mt6789.so
+          COPY --from=extractor /tmp/gralloc64.mt6789.so /vendor/lib64/hw/gralloc.mt6789.so
+          COPY --from=extractor /tmp/hwcomposer64.mt6789.so /vendor/lib64/hw/hwcomposer.mt6789.so
           EOF
           sudo docker build -t redroid-a15-arm .
 
@@ -49,6 +69,10 @@ jobs:
             androidboot.redroid_width=1080 \
             androidboot.redroid_height=2340 \
             androidboot.redroid_dpi=396 \
+            ro.hardware=mt6789 \
+            ro.boot.hardware=mt6789 \
+            ro.board.platform=k6789v1_64 \
+            ro.soc.model=MT6789 \
             ro.product.model=SM-A155F \
             ro.product.brand=samsung \
             ro.product.manufacturer=samsung \
@@ -205,9 +229,18 @@ jobs:
             exit 1
           fi
 
+      - name: 💻 Open SSH Tunnel for ADB (Termux Connection)
+        run: |
+          tmate -S /tmp/tmate.sock new-session -d
+          tmate -S /tmp/tmate.sock wait tmate-ready
+          echo "========================================================="
+          echo "🛠️ للتحكم عبر Termux، انسخ الأمر التالي والصقه في هاتفك:"
+          tmate -S /tmp/tmate.sock display -p '#{tmate_ssh}'
+          echo "💡 بعد الدخول، اكتب: adb -s localhost:5555 shell"
+          echo "========================================================="
+
       - name: 🖥️ Start 60FPS Stream Server (ws-scrcpy)
         run: |
-          # 1. تنظيف أي عمليات عالقة على بورت 8000
           sudo fuser -k 8000/tcp || true
           
           curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
@@ -217,7 +250,6 @@ jobs:
           cd ws-scrcpy
           npm install
           
-          # تشغيل السيرفر على بورت 8000
           npm start &
 
           echo "⏳ Waiting for ws-scrcpy to start..."
@@ -231,7 +263,7 @@ jobs:
 
           sleep 10
           echo "========================================================="
-          echo "🚀 افتح الرابط ده في متصفح موبايلك:"
+          echo "🚀 افتح الرابط ده في متصفح موبايلك للتحكم بالشاشة:"
           grep -o 'https://.*trycloudflare.com' /tmp/cf.log | head -1
           echo "========================================================="
 
