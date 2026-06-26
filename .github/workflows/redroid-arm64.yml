@@ -42,7 +42,7 @@ jobs:
           COPY --from=redroid_base /vendor/lib64/hw/gralloc.redroid.so /tmp/gralloc64.mt6789.so
           COPY --from=redroid_base /vendor/lib64/hw/hwcomposer.redroid.so /tmp/hwcomposer64.mt6789.so
 
-          # تعديلات دقيقة ومستهدفة
+          # تعديلات دقيقة
           RUN sed -i 's/ro.hardware=redroid/ro.hardware=mt6789/g' /tmp/vendor/build.prop || true
           RUN sed -i 's/ro.board.platform=/ro.board.platform=mt6789/g' /tmp/vendor/build.prop || true
           RUN sed -i 's/ro.product.board=/ro.product.board=mt6789/g' /tmp/vendor/build.prop || true
@@ -93,35 +93,31 @@ jobs:
           sleep 25
           adb connect localhost:5555
 
-          for i in {1..25}; do
-            if adb -s localhost:5555 shell getprop sys.boot_completed | grep -q "1"; then
+          for i in {1..30}; do
+            if adb -s localhost:5555 shell getprop sys.boot_completed 2>/dev/null | grep -q "1"; then
               echo "✅ Boot completed successfully"
               break
             fi
-            echo "Boot check $i/25..."
+            echo "Boot check $i/30..."
             sleep 6
           done
 
-          # طباعة الخصائص المهمة للتحقق
           echo "=== Device Properties Check ==="
-          adb -s localhost:5555 shell getprop | grep -E "ro.hardware|ro.product.model|ro.build.fingerprint|ro.board.platform|redroid"
+          adb -s localhost:5555 shell getprop | grep -E "ro.hardware|ro.product.model|ro.build.fingerprint|ro.board.platform|redroid|ro.boot.hardware"
 
       - name: 🔌 Open ADB Tunnel & Stream
         run: |
           sudo lsof -t -i:8000 | xargs -r sudo kill -9 || true
-          sudo lsof -t -i:5555 | xargs -r sudo kill -9 || true
-
-          # Bore Tunnel
+          
           wget -q https://github.com/ekzhang/bore/releases/download/v0.5.1/bore-v0.5.1-aarch64-unknown-linux-musl.tar.gz
           tar -xzf bore-v0.5.1-aarch64-unknown-linux-musl.tar.gz
           chmod +x bore
           ./bore local 5555 --to bore.pub > /tmp/bore.log 2>&1 &
 
-          # ws-scrcpy + Cloudflare
           curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
           sudo apt-get install -y nodejs
           git clone https://github.com/NetrisTV/ws-scrcpy.git
-          cd ws-scrcpy && npm install && npm start &
+          (cd ws-scrcpy && npm install && npm start &) 
 
           sleep 12
 
@@ -129,14 +125,14 @@ jobs:
           chmod +x cloudflared
           ./cloudflared tunnel --url http://localhost:8000 2>&1 | tee /tmp/cf.log &
 
-          sleep 8
+          sleep 10
 
-          ADB_URL=$(grep -o 'bore.pub:[0-9]*' /tmp/bore.log | head -n1)
-          WEB_URL=$(grep -o 'https://[^ ]*\.trycloudflare.com' /tmp/cf.log | head -n1)
+          ADB_URL=$(grep -o 'bore.pub:[0-9]*' /tmp/bore.log | head -n1 || echo "bore.pub:NotFound")
+          WEB_URL=$(grep -o 'https://[^ ]*\.trycloudflare.com' /tmp/cf.log | head -n1 || echo "Cloudflare Not Ready")
 
           echo "========================================================="
           echo "🚀 Samsung A15 Emulator جاهز!"
-          echo "🌐 Web Stream (الشاشة): $WEB_URL"
+          echo "🌐 Web Stream: $WEB_URL"
           echo "📱 ADB Connect: adb connect $ADB_URL"
           echo "========================================================="
           
