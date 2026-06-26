@@ -20,12 +20,11 @@ jobs:
           sudo apt update
           sudo apt remove -y --purge containerd.io || true
           sudo apt autoremove -y
-          sudo apt install -y docker.io adb unzip wget curl python3-pip python3-pil
+          sudo apt install -y docker.io adb unzip wget curl
           sudo systemctl enable --now docker
           sudo chmod 666 /var/run/docker.sock
           sudo apt install -y linux-modules-extra-$(uname -r)
           sudo modprobe binder_linux devices=binder,hwbinder,vndbinder || true
-          pip3 install flask --break-system-packages
 
       - name: 📥 Download GApps + Build Image
         run: |
@@ -171,124 +170,28 @@ jobs:
           sleep 10
           adb connect localhost:5555 || true
 
-      - name: 🖥️ Start Stream Server + Cloudflare
+      - name: 🖥️ Start 60FPS Stream Server (ws-scrcpy)
         run: |
-          cat > stream.py << 'PYEOF'
-          from flask import Flask, Response
-          import subprocess, threading, io, time
-          from PIL import Image
+          curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+          sudo apt-get install -y nodejs
 
-          app = Flask(__name__)
-          latest = b''
-          lock = threading.Lock()
+          git clone https://github.com/NetrisTV/ws-scrcpy.git
+          cd ws-scrcpy
+          npm install
+          npm start &
 
-          def capture():
-              global latest
-              while True:
-                  try:
-                      r = subprocess.run(
-                          ['adb','-s','localhost:5555','exec-out','screencap','-p'],
-                          capture_output=True, timeout=5
-                      )
-                      if r.stdout:
-                          img = Image.open(io.BytesIO(r.stdout))
-                          img = img.resize((540, 1200))
-                          buf = io.BytesIO()
-                          img.save(buf, 'JPEG', quality=60)
-                          with lock:
-                              latest = buf.getvalue()
-                  except:
-                      time.sleep(0.3)
-
-          threading.Thread(target=capture, daemon=True).start()
-
-          def gen():
-              while True:
-                  with lock:
-                      f = latest
-                  if f:
-                      yield b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + f + b'\r\n'
-                  time.sleep(0.1)
-
-          @app.route('/stream')
-          def stream():
-              return Response(gen(), mimetype='multipart/x-mixed-replace; boundary=frame')
-
-          @app.route('/')
-          def index():
-              return open('index.html').read()
-
-          @app.route('/tap/<int:x>/<int:y>')
-          def tap(x,y):
-              subprocess.Popen(['adb','-s','localhost:5555','shell','input','tap',str(x),str(y)])
-              return 'ok'
-
-          @app.route('/swipe/<int:x1>/<int:y1>/<int:x2>/<int:y2>/<int:d>')
-          def swipe(x1,y1,x2,y2,d):
-              subprocess.Popen(['adb','-s','localhost:5555','shell','input','swipe',
-                               str(x1),str(y1),str(x2),str(y2),str(d)])
-              return 'ok'
-
-          @app.route('/nav/<k>')
-          def nav(k):
-              keys={'back':'4','home':'3','recent':'187','vup':'24','vdn':'25'}
-              if k in keys:
-                  subprocess.Popen(['adb','-s','localhost:5555','shell','input','keyevent',keys[k]])
-              return 'ok'
-
-          app.run(host='0.0.0.0', port=8080, threaded=True)
-          PYEOF
-
-          cat > index.html << 'HTMLEOF'
-          <!DOCTYPE html><html><head>
-          <meta name="viewport" content="width=device-width,initial-scale=1">
-          <style>
-          *{margin:0;padding:0;box-sizing:border-box}
-          body{background:#000;display:flex;flex-direction:column;height:100vh}
-          #s{width:100%;flex:1;object-fit:contain;display:block}
-          #bar{display:flex;background:#111;padding:8px;gap:5px;position:fixed;bottom:0;width:100%}
-          button{flex:1;padding:12px;background:#333;color:#fff;border:none;border-radius:8px;font-size:20px}
-          button:active{background:#555}
-          </style></head><body>
-          <img id="s" src="/stream">
-          <div id="bar">
-          <button onclick="n('back')">◀</button>
-          <button onclick="n('home')">⬤</button>
-          <button onclick="n('recent')">▣</button>
-          <button onclick="n('vup')">🔊</button>
-          <button onclick="n('vdn')">🔉</button>
-          </div>
-          <script>
-          const img=document.getElementById('s');
-          let sx,sy,st;
-          img.addEventListener('touchstart',e=>{
-            e.preventDefault();
-            const t=e.touches[0],r=img.getBoundingClientRect();
-            sx=Math.round((t.clientX-r.left)*1080/r.width);
-            sy=Math.round((t.clientY-r.top)*2340/r.height);
-            st=Date.now();
-          },{passive:false});
-          img.addEventListener('touchend',e=>{
-            e.preventDefault();
-            const t=e.changedTouches[0],r=img.getBoundingClientRect();
-            const ex=Math.round((t.clientX-r.left)*1080/r.width);
-            const ey=Math.round((t.clientY-r.top)*2340/r.height);
-            const d=Date.now()-st;
-            if(Math.abs(ex-sx)>30||Math.abs(ey-sy)>30)
-              fetch('/swipe/'+sx+'/'+sy+'/'+ex+'/'+ey+'/'+d);
-            else fetch('/tap/'+ex+'/'+ey);
-          },{passive:false});
-          function n(k){fetch('/nav/'+k)}
-          </script></body></html>
-          HTMLEOF
-
-          python3 stream.py &
-          sleep 3
+          echo "⏳ Waiting for ws-scrcpy to start..."
+          sleep 10
+          cd ..
 
           wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm64 -O cloudflared
           chmod +x cloudflared
-          ./cloudflared tunnel --url http://localhost:8080 2>&1 | tee /tmp/cf.log &
+          ./cloudflared tunnel --url http://localhost:8000 2>&1 | tee /tmp/cf.log &
+
           sleep 10
+          echo "========================================================="
+          echo "🚀 افتح الرابط ده في متصفح موبايلك:"
           grep -o 'https://.*trycloudflare.com' /tmp/cf.log | head -1
+          echo "========================================================="
 
           sleep 20000
