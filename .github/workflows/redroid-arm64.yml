@@ -58,24 +58,35 @@ jobs:
           ADD gapps.zip /gapps.zip
           RUN mkdir -p /tmp/gapps && unzip /gapps.zip -d /tmp/gapps
           
+          # إنشاء مجلدات مؤقتة وتجهيز ملفات الهاردوير (The Magic Fix)
+          RUN mkdir -p /tmp/hw32 /tmp/hw64 /tmp/init
+          COPY --from=redroid_base /vendor/lib/hw/ /tmp/hw32_src/
+          COPY --from=redroid_base /vendor/lib64/hw/ /tmp/hw64_src/
+          COPY --from=redroid_base /vendor/etc/init/ /tmp/init_src/
+
+          # تغيير الأسماء داخل بيئة أوبونتو الآمنة
+          RUN cp /tmp/hw32_src/audio.primary.redroid.so /tmp/hw32/audio.primary.mt6769t.so || true
+          RUN cp /tmp/hw32_src/camera.redroid.so /tmp/hw32/camera.mt6769t.so || true
+          RUN cp /tmp/hw32_src/gralloc.redroid.so /tmp/hw32/gralloc.mt6769t.so || true
+          RUN cp /tmp/hw32_src/hwcomposer.redroid.so /tmp/hw32/hwcomposer.mt6769t.so || true
+          RUN cp /tmp/hw32_src/sensors.redroid.so /tmp/hw32/sensors.mt6769t.so || true
+
+          RUN cp /tmp/hw64_src/audio.primary.redroid.so /tmp/hw64/audio.primary.mt6769t.so || true
+          RUN cp /tmp/hw64_src/camera.redroid.so /tmp/hw64/camera.mt6769t.so || true
+          RUN cp /tmp/hw64_src/gralloc.redroid.so /tmp/hw64/gralloc.mt6769t.so || true
+          RUN cp /tmp/hw64_src/hwcomposer.redroid.so /tmp/hw64/hwcomposer.mt6769t.so || true
+          RUN cp /tmp/hw64_src/sensors.redroid.so /tmp/hw64/sensors.mt6769t.so || true
+
+          RUN cp /tmp/init_src/init.redroid.rc /tmp/init/init.mt6769t.rc || true
+          
           FROM redroid/redroid:13.0.0-latest
           COPY --from=extractor /tmp/gapps/system/ /system/
           COPY overlay/vendor/etc/init/vmos_spoof.rc /vendor/etc/init/vmos_spoof.rc
 
-          # السحر الهندسي: استنساخ جميع تعريفات الهاردوير (HALs) لتطابق اسم المعالج الجديد
-          RUN cd /vendor/lib/hw && \
-              cp audio.primary.redroid.so audio.primary.mt6769t.so || true && \
-              cp camera.redroid.so camera.mt6769t.so || true && \
-              cp gralloc.redroid.so gralloc.mt6769t.so || true && \
-              cp hwcomposer.redroid.so hwcomposer.mt6769t.so || true && \
-              cp sensors.redroid.so sensors.mt6769t.so || true && \
-              cd /vendor/lib64/hw && \
-              cp audio.primary.redroid.so audio.primary.mt6769t.so || true && \
-              cp camera.redroid.so camera.mt6769t.so || true && \
-              cp gralloc.redroid.so gralloc.mt6769t.so || true && \
-              cp hwcomposer.redroid.so hwcomposer.mt6769t.so || true && \
-              cp sensors.redroid.so sensors.mt6769t.so || true && \
-              cp /vendor/etc/init/init.redroid.rc /vendor/etc/init/init.mt6769t.rc || true
+          # حقن الملفات الجاهزة بعد تغيير اسمها
+          COPY --from=extractor /tmp/hw32/ /vendor/lib/hw/
+          COPY --from=extractor /tmp/hw64/ /vendor/lib64/hw/
+          COPY --from=extractor /tmp/init/ /vendor/etc/init/
           EOF
           
           sudo docker build -t redroid-a22-fud .
