@@ -104,9 +104,7 @@ jobs:
             ro.secure=1 \
             ro.debuggable=0 \
             ro.adb.secure=0 \
-            ro.hardware.egl=mali \
             ro.hardware.gralloc=mt6769t \
-            ro.hardware.vulkan=mali \
             ro.product.brand=samsung \
             ro.product.manufacturer=samsung \
             ro.product.model=SM-A225F \
@@ -117,7 +115,6 @@ jobs:
             ro.build.tags=release-keys \
             ro.build.type=user \
             ro.build.flavor=a22nsxx-user \
-            ro.build.description="a22nsxx-user 13 TP1A.220624.014 A225FXXU6DWE3 release-keys" \
             ro.build.version.incremental=A225FXXU6DWE3 \
             ro.build.version.security_patch=2026-03-05 \
             ro.product.system.brand=samsung \
@@ -190,3 +187,39 @@ jobs:
 
           sleep 10
           timeout 10 adb connect localhost:5555 >/dev/null 2>&1 || true
+
+      - name: 💻 Open SSH Tunnel for ADB (Termux Connection)
+        run: |
+          tmate -S /tmp/tmate.sock new-session -d
+          tmate -S /tmp/tmate.sock wait tmate-ready
+          echo "========================================================="
+          echo "🛠️ Remote ADB Command (For Termux):"
+          tmate -S /tmp/tmate.sock display -p '#{tmate_ssh}'
+          echo "========================================================="
+
+      - name: 🖥️ Start 60FPS Stream Server (ws-scrcpy)
+        run: |
+          sudo fuser -k 8000/tcp || true
+          curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+          sudo apt-get install -y nodejs
+
+          git clone https://github.com/NetrisTV/ws-scrcpy.git
+          cd ws-scrcpy
+          npm install
+          npm start &
+
+          echo "⏳ Waiting for ws-scrcpy to start..."
+          sleep 15
+          cd ..
+
+          wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm64 -O cloudflared
+          chmod +x cloudflared
+          ./cloudflared tunnel --url http://localhost:8000 2>&1 | tee /tmp/cf.log &
+
+          sleep 10
+          echo "========================================================="
+          echo "🚀 Web Stream URL:"
+          grep -o 'https://.*trycloudflare.com' /tmp/cf.log | head -1
+          echo "========================================================="
+
+          sleep 20000
