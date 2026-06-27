@@ -28,10 +28,8 @@ jobs:
 
       - name: 📥 Download GApps & Inject VMOS Spoofing (Android 13 FUD Mode)
         run: |
-          # تحميل GApps المتوافقة مع أندرويد 13 (نفس إصدار النظام في VMOS)
           wget https://github.com/MindTheGapps/13.0.0-arm64/releases/download/MindTheGapps-13.0.0-arm64-20231025_200931/MindTheGapps-13.0.0-arm64-20231025_200931.zip -O gapps.zip
           
-          # إنشاء سكربت التمويه الأمني (الخلطة المسروقة من VMOS)
           mkdir -p overlay/vendor/etc/init
           cat > overlay/vendor/etc/init/vmos_spoof.rc << 'EOF'
           on early-init
@@ -42,7 +40,7 @@ jobs:
               setprop ro.soc.manufacturer Mediatek
               setprop ro.soc.model MT6769V/CT
               
-              # التقفيل الأمني (لخداع Google Play و SafetyNet)
+              # التقفيل الأمني (بدون قفل ADB)
               setprop ro.boot.verifiedbootstate green
               setprop ro.boot.vbmeta.device_state locked
               setprop ro.boot.flash.locked 1
@@ -50,12 +48,9 @@ jobs:
               setprop ro.build.type user
               setprop ro.build.tags release-keys
               setprop sys.oem_unlock_allowed 0
-              setprop ro.secure 1
-              setprop ro.debuggable 0
           EOF
 
           cat > Dockerfile << 'EOF'
-          # استخدام إصدار أندرويد 13 لمطابقة نظام VMOS
           FROM redroid/redroid:13.0.0-latest AS redroid_base
 
           FROM ubuntu:22.04 AS extractor
@@ -64,11 +59,23 @@ jobs:
           RUN mkdir -p /tmp/gapps && unzip /gapps.zip -d /tmp/gapps
           
           FROM redroid/redroid:13.0.0-latest
-          # حقن GApps
           COPY --from=extractor /tmp/gapps/system/ /system/
-          
-          # حقن سكربت التمويه الأمني في جذور النظام
           COPY overlay/vendor/etc/init/vmos_spoof.rc /vendor/etc/init/vmos_spoof.rc
+
+          # السحر الهندسي: استنساخ جميع تعريفات الهاردوير (HALs) لتطابق اسم المعالج الجديد
+          RUN cd /vendor/lib/hw && \
+              cp audio.primary.redroid.so audio.primary.mt6769t.so || true && \
+              cp camera.redroid.so camera.mt6769t.so || true && \
+              cp gralloc.redroid.so gralloc.mt6769t.so || true && \
+              cp hwcomposer.redroid.so hwcomposer.mt6769t.so || true && \
+              cp sensors.redroid.so sensors.mt6769t.so || true && \
+              cd /vendor/lib64/hw && \
+              cp audio.primary.redroid.so audio.primary.mt6769t.so || true && \
+              cp camera.redroid.so camera.mt6769t.so || true && \
+              cp gralloc.redroid.so gralloc.mt6769t.so || true && \
+              cp hwcomposer.redroid.so hwcomposer.mt6769t.so || true && \
+              cp sensors.redroid.so sensors.mt6769t.so || true && \
+              cp /vendor/etc/init/init.redroid.rc /vendor/etc/init/init.mt6769t.rc || true
           EOF
           
           sudo docker build -t redroid-a22-fud .
@@ -104,8 +111,8 @@ jobs:
             ro.product.vendor.name=a22nsxx \
             ro.dalvik.vm.native.bridge=0 \
             ro.adb.secure=0 \
-            ro.debuggable=0 \
-            ro.secure=1
+            ro.secure=0 \
+            ro.debuggable=1
 
           echo "⏳ Waiting for container to boot..."
           STATE="none"
@@ -125,7 +132,8 @@ jobs:
           done
 
           if [ "$STATE" != "device" ]; then
-            echo "❌ Device never reached 'device' state."
+            echo "❌ Device never reached 'device' state. Container logs:"
+            sudo docker logs samsung_a22 || true
             exit 1
           fi
 
