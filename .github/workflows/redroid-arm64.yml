@@ -1,178 +1,44 @@
-name: 🚀 VMOS-Killer (Stable Full Spoofing)
+name: 🛠️ VMOS Interactive Debugger
 
 on:
   workflow_dispatch:
 
 jobs:
-  arm-redroid:
+  debug-session:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 360
 
     steps:
-      - name: ✅ Environment Check
-        run: |
-          echo "Architecture: $(uname -m)"
-          echo "CPUs: $(nproc)"
-          echo "RAM: $(free -h)"
-
-      - name: 🔧 Install Dependencies + Binder (The Core Fix)
+      - name: 🔧 Install Dependencies + Binder
         run: |
           sudo apt-get update -qq
           sudo apt-get remove -y --purge containerd.io || true
           sudo apt-get autoremove -y
-          sudo apt-get install -y docker.io adb unzip wget curl tmate \
-            linux-modules-extra-$(uname -r)
+          sudo apt-get install -y docker.io adb unzip wget curl tmate linux-modules-extra-$(uname -r)
           sudo systemctl enable --now docker
           sudo chmod 666 /var/run/docker.sock
+          sudo modprobe binder_linux devices="binder,hwbinder,vndbinder" || true
+          sudo modprobe ashmem_linux 2>/dev/null || true
 
-          # binder — لازم ينجح وإلا مفيش فايدة
-          sudo modprobe binder_linux devices="binder,hwbinder,vndbinder" || {
-            echo "❌ binder failed"; sudo dmesg -T | tail -20; exit 1
-          }
-          echo "✅ binder: $(lsmod | grep binder | head -1)"
-
-          # ashmem — اختياري على Ubuntu 24
-          sudo modprobe ashmem_linux 2>/dev/null \
-            && echo "✅ ashmem loaded" \
-            || echo "⚠️ ashmem not found — use_memfd will handle it"
-
-      - name: 📥 Download GApps & Build FUD Image
+      - name: 📥 Download GApps & Build Base Image
         run: |
           wget https://github.com/MindTheGapps/13.0.0-arm64/releases/download/MindTheGapps-13.0.0-arm64-20231025_200931/MindTheGapps-13.0.0-arm64-20231025_200931.zip -O gapps.zip
-          
-          echo 'FROM ubuntu:22.04 AS extractor' > Dockerfile
-          echo 'RUN apt-get update && apt-get install -y unzip' >> Dockerfile
-          echo 'ADD gapps.zip /gapps.zip' >> Dockerfile
-          echo 'RUN mkdir -p /tmp/gapps && unzip /gapps.zip -d /tmp/gapps' >> Dockerfile
-          echo '' >> Dockerfile
-          echo 'FROM redroid/redroid:13.0.0-latest' >> Dockerfile
-          echo 'COPY --from=extractor /tmp/gapps/system/ /system/' >> Dockerfile
-          
-          sudo docker build -t redroid-a22-fud .
+          cat > Dockerfile << 'EOF'
+          FROM ubuntu:22.04 AS extractor
+          RUN apt-get update && apt-get install -y unzip
+          ADD gapps.zip /gapps.zip
+          RUN mkdir -p /tmp/gapps && unzip /gapps.zip -d /tmp/gapps
+          FROM redroid/redroid:13.0.0-latest
+          COPY --from=extractor /tmp/gapps/system/ /system/
+          EOF
+          sudo docker build -t redroid-debug .
 
-      - name: 📱 Start Samsung A22 (Full Spoof + memfd)
-        timeout-minutes: 8
-        run: |
-          sudo docker run -itd --privileged --name samsung_a22 \
-            -v ~/redroid_data:/data \
-            -p 5555:5555 \
-            redroid-a22-fud \
-            androidboot.use_memfd=true \
-            androidboot.redroid_width=1080 \
-            androidboot.redroid_height=2340 \
-            androidboot.redroid_dpi=300 \
-            androidboot.redroid_gpu_mode=guest \
-            ro.product.brand=samsung \
-            ro.product.manufacturer=samsung \
-            ro.product.model=SM-A225F \
-            ro.product.device=a22 \
-            ro.product.name=a22nstur \
-            ro.build.fingerprint=samsung/a22nstur/a22:13/TP1A.220624.014/A225FXXU6DWE3:user/release-keys \
-            ro.build.id=TP1A.220624.014 \
-            ro.build.tags=release-keys \
-            ro.build.type=user \
-            ro.build.flavor=a22nsxx-user \
-            ro.build.version.incremental=A225FXXU6DWE3 \
-            ro.build.version.security_patch=2026-03-05 \
-            ro.soc.manufacturer=Mediatek \
-            ro.soc.model=MT6769V/CT \
-            ro.product.system.brand=samsung \
-            ro.product.system.device=a22 \
-            ro.product.system.manufacturer=samsung \
-            ro.product.system.model=SM-A225F \
-            ro.product.system.name=a22nsxx \
-            ro.product.system_ext.brand=samsung \
-            ro.product.system_ext.device=a22 \
-            ro.product.system_ext.manufacturer=samsung \
-            ro.product.system_ext.model=SM-A225F \
-            ro.product.system_ext.name=a22nsxx \
-            ro.product.vendor.brand=samsung \
-            ro.product.vendor.device=a22 \
-            ro.product.vendor.manufacturer=samsung \
-            ro.product.vendor.model=SM-A225F \
-            ro.product.vendor.name=a22nsxx \
-            ro.product.odm.brand=samsung \
-            ro.product.odm.device=a22 \
-            ro.product.odm.manufacturer=samsung \
-            ro.product.odm.model=SM-A225F \
-            ro.product.odm.name=a22nsxx \
-            ro.product.vendor_dlkm.brand=samsung \
-            ro.product.vendor_dlkm.device=a22 \
-            ro.product.vendor_dlkm.manufacturer=samsung \
-            ro.product.vendor_dlkm.model=SM-A225F \
-            ro.product.vendor_dlkm.name=a22nsxx \
-            ro.secure=1 \
-            ro.debuggable=0 \
-            ro.adb.secure=0 \
-            ro.dalvik.vm.native.bridge=0
-
-          echo "⏳ Waiting for container to boot..."
-          STATE="none"
-          for i in $(seq 1 20); do
-            if ! sudo docker ps --format '{{.Names}}' | grep -q '^samsung_a22$'; then
-              echo "❌ Container crashed — logs:"
-              sudo docker logs samsung_a22 2>&1 | tail -30
-              echo "=== dmesg ==="
-              sudo dmesg -T | tail -20
-              exit 1
-            fi
-            timeout 10 adb connect localhost:5555 >/dev/null 2>&1 || true
-            STATE=$(timeout 10 adb -s localhost:5555 get-state 2>/dev/null || echo "none")
-            if [ "$STATE" = "device" ]; then
-              echo "✅ Device is online"
-              break
-            fi
-            sleep 5
-          done
-
-          if [ "$STATE" != "device" ]; then
-            echo "❌ Device never reached 'device' state."
-            echo "=== Container logs ==="
-            sudo docker logs samsung_a22 2>&1 | tail -30
-            exit 1
-          fi
-
-          BOOT_COMPLETED="0"
-          for i in $(seq 1 15); do
-            BOOT_COMPLETED=$(timeout 10 adb -s localhost:5555 shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
-            if [ "$BOOT_COMPLETED" = "1" ]; then
-              echo "✅ Boot completed"
-              break
-            fi
-            sleep 5
-          done
-
-          timeout 10 adb -s localhost:5555 shell settings put global device_provisioned 1 || true
-          timeout 10 adb -s localhost:5555 shell settings put secure user_setup_complete 1 || true
-          timeout 10 adb -s localhost:5555 shell pm disable-user --user 0 com.google.android.setupwizard || true
-          timeout 10 adb -s localhost:5555 shell settings put system screen_off_timeout 1800000 || true
-
-      - name: 💻 Open SSH Tunnel for ADB (Termux Connection)
+      - name: 💻 Open SSH Tunnel (Terminal Ready)
         run: |
           tmate -S /tmp/tmate.sock new-session -d
           tmate -S /tmp/tmate.sock wait tmate-ready
           echo "========================================================="
-          echo "🛠️ Remote ADB Command (For Termux):"
+          echo "🛠️ السيرفر جاهز! انسخ الرابط ده وادخل من Termux:"
           tmate -S /tmp/tmate.sock display -p '#{tmate_ssh}'
-          echo "========================================================="
-
-      - name: 🖥️ Start 60FPS Stream Server (ws-scrcpy)
-        run: |
-          sudo fuser -k 8000/tcp || true
-          curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-          sudo apt-get install -y nodejs
-          git clone https://github.com/NetrisTV/ws-scrcpy.git
-          cd ws-scrcpy
-          npm install
-          npm start &
-          sleep 15
-          cd ..
-          wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm64 -O cloudflared
-          chmod +x cloudflared
-          ./cloudflared tunnel --url http://localhost:8000 2>&1 | tee /tmp/cf.log &
-          sleep 10
-          echo "========================================================="
-          echo "🚀 Web Stream URL:"
-          grep -o 'https://.*trycloudflare.com' /tmp/cf.log | head -1
           echo "========================================================="
           sleep 20000
