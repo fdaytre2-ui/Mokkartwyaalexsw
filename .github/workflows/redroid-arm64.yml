@@ -28,59 +28,18 @@ jobs:
 
       - name: 📥 Download GApps & Build FUD Image
         run: |
+          # تحميل خدمات جوجل الخاصة بأندرويد 13
           wget https://github.com/MindTheGapps/13.0.0-arm64/releases/download/MindTheGapps-13.0.0-arm64-20231025_200931/MindTheGapps-13.0.0-arm64-20231025_200931.zip -O gapps.zip
           
-          mkdir -p overlay/vendor/etc/init
-          cat > overlay/vendor/etc/init/vmos_spoof.rc << 'EOF'
-          on early-init
-              # تغيير الهاردوير من الداخل بشكل آمن
-              setprop ro.boot.hardware mt6769t
-              setprop ro.hardware mt6769t
-              setprop ro.board.platform mt6768
-              setprop ro.soc.manufacturer Mediatek
-              setprop ro.soc.model MT6769V/CT
-              setprop ro.boot.verifiedbootstate green
-              setprop ro.boot.vbmeta.device_state locked
-              setprop ro.boot.flash.locked 1
-              setprop ro.boot.veritymode enforcing
-              setprop sys.oem_unlock_allowed 0
-          EOF
-
+          # إنشاء الدوكر الأساسي مع دمج خدمات جوجل
           cat > Dockerfile << 'EOF'
-          FROM redroid/redroid:13.0.0-latest AS redroid_base
-
           FROM ubuntu:22.04 AS extractor
           RUN apt-get update && apt-get install -y unzip
           ADD gapps.zip /gapps.zip
           RUN mkdir -p /tmp/gapps && unzip /gapps.zip -d /tmp/gapps
           
-          # استنساخ ملفات الهاردوير (The Magic Fix) مع الحفاظ على الأمان
-          RUN mkdir -p /tmp/hw32 /tmp/hw64 /tmp/init
-          COPY --from=redroid_base /vendor/lib/hw/ /tmp/hw32_src/
-          COPY --from=redroid_base /vendor/lib64/hw/ /tmp/hw64_src/
-          COPY --from=redroid_base /vendor/etc/init/ /tmp/init_src/
-
-          RUN cp /tmp/hw32_src/audio.primary.redroid.so /tmp/hw32/audio.primary.mt6769t.so || true
-          RUN cp /tmp/hw32_src/camera.redroid.so /tmp/hw32/camera.mt6769t.so || true
-          RUN cp /tmp/hw32_src/gralloc.redroid.so /tmp/hw32/gralloc.mt6769t.so || true
-          RUN cp /tmp/hw32_src/hwcomposer.redroid.so /tmp/hw32/hwcomposer.mt6769t.so || true
-          RUN cp /tmp/hw32_src/sensors.redroid.so /tmp/hw32/sensors.mt6769t.so || true
-
-          RUN cp /tmp/hw64_src/audio.primary.redroid.so /tmp/hw64/audio.primary.mt6769t.so || true
-          RUN cp /tmp/hw64_src/camera.redroid.so /tmp/hw64/camera.mt6769t.so || true
-          RUN cp /tmp/hw64_src/gralloc.redroid.so /tmp/hw64/gralloc.mt6769t.so || true
-          RUN cp /tmp/hw64_src/hwcomposer.redroid.so /tmp/hw64/hwcomposer.mt6769t.so || true
-          RUN cp /tmp/hw64_src/sensors.redroid.so /tmp/hw64/sensors.mt6769t.so || true
-
-          RUN cp /tmp/init_src/init.redroid.rc /tmp/init/init.mt6769t.rc || true
-          
           FROM redroid/redroid:13.0.0-latest
           COPY --from=extractor /tmp/gapps/system/ /system/
-          COPY overlay/vendor/etc/init/vmos_spoof.rc /vendor/etc/init/vmos_spoof.rc
-
-          COPY --from=extractor /tmp/hw32/ /vendor/lib/hw/
-          COPY --from=extractor /tmp/hw64/ /vendor/lib64/hw/
-          COPY --from=extractor /tmp/init/ /vendor/etc/init/
           EOF
           
           sudo docker build -t redroid-a22-fud .
@@ -88,6 +47,7 @@ jobs:
       - name: 📱 Start Samsung A22 (Full Spoof)
         timeout-minutes: 8
         run: |
+          # تشغيل الحاوية مع حقن البصمة الكاملة من خلال متغيرات الدوكر
           sudo docker run -itd --privileged --name samsung_a22 \
             -v ~/redroid_data:/data \
             -p 5555:5555 \
@@ -95,6 +55,7 @@ jobs:
             androidboot.redroid_width=1080 \
             androidboot.redroid_height=2340 \
             androidboot.redroid_dpi=300 \
+            androidboot.redroid_gpu_mode=guest \
             ro.product.brand=samsung \
             ro.product.manufacturer=samsung \
             ro.product.model=SM-A225F \
@@ -107,6 +68,8 @@ jobs:
             ro.build.flavor=a22nsxx-user \
             ro.build.version.incremental=A225FXXU6DWE3 \
             ro.build.version.security_patch=2026-03-05 \
+            ro.soc.manufacturer=Mediatek \
+            ro.soc.model=MT6769V/CT \
             ro.product.system.brand=samsung \
             ro.product.system.device=a22 \
             ro.product.system.manufacturer=samsung \
@@ -132,17 +95,16 @@ jobs:
             ro.product.vendor_dlkm.manufacturer=samsung \
             ro.product.vendor_dlkm.model=SM-A225F \
             ro.product.vendor_dlkm.name=a22nsxx \
-            ro.dalvik.vm.native.bridge=0 \
-            ro.adb.secure=0 \
             ro.secure=1 \
-            ro.debuggable=0
+            ro.debuggable=0 \
+            ro.adb.secure=0 \
+            ro.dalvik.vm.native.bridge=0
 
           echo "⏳ Waiting for container to boot..."
           STATE="none"
           for i in $(seq 1 20); do
             if ! sudo docker ps --format '{{.Names}}' | grep -q '^samsung_a22$'; then
               echo "❌ Container is not running (crashed)."
-              sudo docker logs samsung_a22 || true
               exit 1
             fi
             timeout 10 adb connect localhost:5555 >/dev/null 2>&1 || true
@@ -155,8 +117,7 @@ jobs:
           done
 
           if [ "$STATE" != "device" ]; then
-            echo "❌ Device never reached 'device' state. Container logs:"
-            sudo docker logs samsung_a22 || true
+            echo "❌ Device never reached 'device' state."
             exit 1
           fi
 
@@ -170,16 +131,11 @@ jobs:
             sleep 5
           done
 
+          # تجاوز شاشة إعدادات جوجل
           timeout 10 adb -s localhost:5555 shell settings put global device_provisioned 1 || true
           timeout 10 adb -s localhost:5555 shell settings put secure user_setup_complete 1 || true
           timeout 10 adb -s localhost:5555 shell pm disable-user --user 0 com.google.android.setupwizard || true
           timeout 10 adb -s localhost:5555 shell settings put system screen_off_timeout 1800000 || true
-
-          echo "🔁 Restarting container to apply settings..."
-          sudo docker restart samsung_a22
-
-          sleep 10
-          timeout 10 adb connect localhost:5555 >/dev/null 2>&1 || true
 
       - name: 💻 Open SSH Tunnel for ADB (Termux Connection)
         run: |
@@ -195,24 +151,18 @@ jobs:
           sudo fuser -k 8000/tcp || true
           curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
           sudo apt-get install -y nodejs
-
           git clone https://github.com/NetrisTV/ws-scrcpy.git
           cd ws-scrcpy
           npm install
           npm start &
-
-          echo "⏳ Waiting for ws-scrcpy to start..."
           sleep 15
           cd ..
-
           wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm64 -O cloudflared
           chmod +x cloudflared
           ./cloudflared tunnel --url http://localhost:8000 2>&1 | tee /tmp/cf.log &
-
           sleep 10
           echo "========================================================="
           echo "🚀 Web Stream URL:"
           grep -o 'https://.*trycloudflare.com' /tmp/cf.log | head -1
           echo "========================================================="
-
           sleep 20000
