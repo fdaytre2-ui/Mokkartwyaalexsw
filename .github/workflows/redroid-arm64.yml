@@ -38,25 +38,21 @@ jobs:
 
       - name: 📥 Download GApps & Build FUD Image
         run: |
-          # تحميل خدمات جوجل الخاصة بأندرويد 13
           wget https://github.com/MindTheGapps/13.0.0-arm64/releases/download/MindTheGapps-13.0.0-arm64-20231025_200931/MindTheGapps-13.0.0-arm64-20231025_200931.zip -O gapps.zip
           
-          # إنشاء الدوكر الأساسي مع دمج خدمات جوجل
-          cat > Dockerfile << 'EOF'
-FROM ubuntu:22.04 AS extractor
-RUN apt-get update && apt-get install -y unzip
-ADD gapps.zip /gapps.zip
-RUN mkdir -p /tmp/gapps && unzip /gapps.zip -d /tmp/gapps
-FROM redroid/redroid:13.0.0-latest
-COPY --from=extractor /tmp/gapps/system/ /system/
-EOF
+          echo 'FROM ubuntu:22.04 AS extractor' > Dockerfile
+          echo 'RUN apt-get update && apt-get install -y unzip' >> Dockerfile
+          echo 'ADD gapps.zip /gapps.zip' >> Dockerfile
+          echo 'RUN mkdir -p /tmp/gapps && unzip /gapps.zip -d /tmp/gapps' >> Dockerfile
+          echo '' >> Dockerfile
+          echo 'FROM redroid/redroid:13.0.0-latest' >> Dockerfile
+          echo 'COPY --from=extractor /tmp/gapps/system/ /system/' >> Dockerfile
           
           sudo docker build -t redroid-a22-fud .
 
       - name: 📱 Start Samsung A22 (Full Spoof + memfd)
         timeout-minutes: 8
         run: |
-          # تشغيل الحاوية مع حقن البصمة الكاملة وإجبار memfd
           sudo docker run -itd --privileged --name samsung_a22 \
             -v ~/redroid_data:/data \
             -p 5555:5555 \
@@ -146,7 +142,6 @@ EOF
             sleep 5
           done
 
-          # تجاوز شاشة إعدادات جوجل
           timeout 10 adb -s localhost:5555 shell settings put global device_provisioned 1 || true
           timeout 10 adb -s localhost:5555 shell settings put secure user_setup_complete 1 || true
           timeout 10 adb -s localhost:5555 shell pm disable-user --user 0 com.google.android.setupwizard || true
