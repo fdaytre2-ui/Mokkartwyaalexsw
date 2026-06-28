@@ -1,4 +1,4 @@
-name: 🚀 RM64 workflow for Samsung A15
+name: 🚀 VMOS-Killer (Stable Full Spoofing)
 
 on:
   workflow_dispatch:
@@ -26,147 +26,127 @@ jobs:
           sudo apt install -y linux-modules-extra-$(uname -r)
           sudo modprobe binder_linux devices=binder,hwbinder,vndbinder || true
 
-      - name: 📥 Download GApps + Build Image (FUD Mode)
+      - name: 📥 Download GApps & Build FUD Image
         run: |
-          wget https://github.com/MindTheGapps/14.0.0-arm64/releases/download/MindTheGapps-14.0.0-arm64-20250203_200051/MindTheGapps-14.0.0-arm64-20250203_200051.zip -O gapps.zip
-          cat > Dockerfile << 'EOF'
-          # 1. سحب الملفات الأصلية من ريدرويد
-          FROM redroid/redroid:14.0.0-latest AS redroid_base
+          wget https://github.com/MindTheGapps/13.0.0-arm64/releases/download/MindTheGapps-13.0.0-arm64-20231025_200931/MindTheGapps-13.0.0-arm64-20231025_200931.zip -O gapps.zip
+          
+          mkdir -p overlay/vendor/etc/init
+          cat > overlay/vendor/etc/init/vmos_spoof.rc << 'EOF'
+          on early-init
+              # تغيير الهاردوير من الداخل بشكل آمن
+              setprop ro.boot.hardware mt6769t
+              setprop ro.hardware mt6769t
+              setprop ro.board.platform mt6768
+              setprop ro.soc.manufacturer Mediatek
+              setprop ro.soc.model MT6769V/CT
+              setprop ro.boot.verifiedbootstate green
+              setprop ro.boot.vbmeta.device_state locked
+              setprop ro.boot.flash.locked 1
+              setprop ro.boot.veritymode enforcing
+              setprop sys.oem_unlock_allowed 0
+          EOF
 
-          # 2. بيئة العمل واستخراج GApps
+          cat > Dockerfile << 'EOF'
+          FROM redroid/redroid:13.0.0-latest AS redroid_base
+
           FROM ubuntu:22.04 AS extractor
           RUN apt-get update && apt-get install -y unzip
           ADD gapps.zip /gapps.zip
           RUN mkdir -p /tmp/gapps && unzip /gapps.zip -d /tmp/gapps
           
-          # 3. السحر الهندسي: استنساخ وتغيير أسماء تعريفات الشاشة وملف الإقلاع
-          COPY --from=redroid_base /vendor/etc/init/init.redroid.rc /tmp/init.mt6789.rc
-          COPY --from=redroid_base /vendor/lib/hw/gralloc.redroid.so /tmp/gralloc.mt6789.so
-          COPY --from=redroid_base /vendor/lib/hw/hwcomposer.redroid.so /tmp/hwcomposer.mt6789.so
-          COPY --from=redroid_base /vendor/lib64/hw/gralloc.redroid.so /tmp/gralloc64.mt6789.so
-          COPY --from=redroid_base /vendor/lib64/hw/hwcomposer.redroid.so /tmp/hwcomposer64.mt6789.so
+          # استنساخ ملفات الهاردوير (The Magic Fix) مع الحفاظ على الأمان
+          RUN mkdir -p /tmp/hw32 /tmp/hw64 /tmp/init
+          COPY --from=redroid_base /vendor/lib/hw/ /tmp/hw32_src/
+          COPY --from=redroid_base /vendor/lib64/hw/ /tmp/hw64_src/
+          COPY --from=redroid_base /vendor/etc/init/ /tmp/init_src/
 
-          # 4. بناء النظام النهائي
-          FROM redroid/redroid:14.0.0-latest
-          COPY --from=extractor /tmp/gapps/system/ /system/
+          RUN cp /tmp/hw32_src/audio.primary.redroid.so /tmp/hw32/audio.primary.mt6769t.so || true
+          RUN cp /tmp/hw32_src/camera.redroid.so /tmp/hw32/camera.mt6769t.so || true
+          RUN cp /tmp/hw32_src/gralloc.redroid.so /tmp/hw32/gralloc.mt6769t.so || true
+          RUN cp /tmp/hw32_src/hwcomposer.redroid.so /tmp/hw32/hwcomposer.mt6769t.so || true
+          RUN cp /tmp/hw32_src/sensors.redroid.so /tmp/hw32/sensors.mt6769t.so || true
+
+          RUN cp /tmp/hw64_src/audio.primary.redroid.so /tmp/hw64/audio.primary.mt6769t.so || true
+          RUN cp /tmp/hw64_src/camera.redroid.so /tmp/hw64/camera.mt6769t.so || true
+          RUN cp /tmp/hw64_src/gralloc.redroid.so /tmp/hw64/gralloc.mt6769t.so || true
+          RUN cp /tmp/hw64_src/hwcomposer.redroid.so /tmp/hw64/hwcomposer.mt6769t.so || true
+          RUN cp /tmp/hw64_src/sensors.redroid.so /tmp/hw64/sensors.mt6769t.so || true
+
+          RUN cp /tmp/init_src/init.redroid.rc /tmp/init/init.mt6769t.rc || true
           
-          # 5. حقن الملفات الجاهزة داخل النظام الوهمي
-          COPY --from=extractor /tmp/init.mt6789.rc /vendor/etc/init/init.mt6789.rc
-          COPY --from=extractor /tmp/gralloc.mt6789.so /vendor/lib/hw/gralloc.mt6789.so
-          COPY --from=extractor /tmp/hwcomposer.mt6789.so /vendor/lib/hw/hwcomposer.mt6789.so
-          COPY --from=extractor /tmp/gralloc64.mt6789.so /vendor/lib64/hw/gralloc.mt6789.so
-          COPY --from=extractor /tmp/hwcomposer64.mt6789.so /vendor/lib64/hw/hwcomposer.mt6789.so
-          EOF
-          sudo docker build -t redroid-a15-arm .
+          FROM redroid/redroid:13.0.0-latest
+          COPY --from=extractor /tmp/gapps/system/ /system/
+          COPY overlay/vendor/etc/init/vmos_spoof.rc /vendor/etc/init/vmos_spoof.rc
 
-      - name: 📱 Start Samsung A15
+          COPY --from=extractor /tmp/hw32/ /vendor/lib/hw/
+          COPY --from=extractor /tmp/hw64/ /vendor/lib64/hw/
+          COPY --from=extractor /tmp/init/ /vendor/etc/init/
+          EOF
+          
+          sudo docker build -t redroid-a22-fud .
+
+      - name: 📱 Start Samsung A22 (Full Spoof)
         timeout-minutes: 8
         run: |
-          sudo docker run -itd --privileged --name samsung_a15 \
-            -v ~/redroid_a15_data:/data \
+          sudo docker run -itd --privileged --name samsung_a22 \
+            -v ~/redroid_data:/data \
             -p 5555:5555 \
-            redroid-a15-arm \
+            redroid-a22-fud \
             androidboot.redroid_width=1080 \
             androidboot.redroid_height=2340 \
-            androidboot.redroid_dpi=396 \
-            ro.hardware=mt6789 \
-            ro.boot.hardware=mt6789 \
-            ro.board.platform=k6789v1_64 \
-            ro.soc.model=MT6789 \
-            ro.product.model=SM-A155F \
+            androidboot.redroid_dpi=300 \
             ro.product.brand=samsung \
             ro.product.manufacturer=samsung \
-            ro.product.device=a15 \
-            ro.product.name=a15nsxx \
-            ro.build.fingerprint=samsung/a15nsxx/a15:14/UP1A.231005.007/A155FXXU1AXA2:user/release-keys \
+            ro.product.model=SM-A225F \
+            ro.product.device=a22 \
+            ro.product.name=a22nstur \
+            ro.build.fingerprint=samsung/a22nstur/a22:13/TP1A.220624.014/A225FXXU6DWE3:user/release-keys \
+            ro.build.id=TP1A.220624.014 \
             ro.build.tags=release-keys \
             ro.build.type=user \
-            ro.build.id=UP1A.231005.007 \
-            ro.build.display.id=UP1A.231005.007.A155FXXU1AXA2 \
-            ro.build.description=a15nsxx-user.14.UP1A.231005.007.A155FXXU1AXA2.release-keys \
-            ro.build.version.incremental=A155FXXU1AXA2 \
-            ro.build.flavor=a15-user \
-            ro.build.product=a15 \
-            ro.build.host=SWDM8403 \
-            ro.build.user=dpi \
-            ro.build.version.security_patch=2024-05-05 \
-            ro.product.odm.brand=samsung \
-            ro.product.odm.device=a15 \
-            ro.product.odm.manufacturer=samsung \
-            ro.product.odm.model=SM-A155F \
-            ro.product.odm.name=a15nsxx \
-            ro.odm.build.fingerprint=samsung/a15nsxx/a15:14/UP1A.231005.007/A155FXXU1AXA2:user/release-keys \
-            ro.odm.build.id=UP1A.231005.007 \
-            ro.odm.build.tags=release-keys \
-            ro.odm.build.type=user \
-            ro.odm.build.version.incremental=A155FXXU1AXA2 \
-            ro.product.product.brand=samsung \
-            ro.product.product.device=a15 \
-            ro.product.product.manufacturer=samsung \
-            ro.product.product.model=SM-A155F \
-            ro.product.product.name=a15nsxx \
-            ro.product.build.fingerprint=samsung/a15nsxx/a15:14/UP1A.231005.007/A155FXXU1AXA2:user/release-keys \
-            ro.product.build.id=UP1A.231005.007 \
-            ro.product.build.tags=release-keys \
-            ro.product.build.type=user \
-            ro.product.build.version.incremental=A155FXXU1AXA2 \
+            ro.build.flavor=a22nsxx-user \
+            ro.build.version.incremental=A225FXXU6DWE3 \
+            ro.build.version.security_patch=2026-03-05 \
             ro.product.system.brand=samsung \
-            ro.product.system.device=a15 \
+            ro.product.system.device=a22 \
             ro.product.system.manufacturer=samsung \
-            ro.product.system.model=SM-A155F \
-            ro.product.system.name=a15 \
-            ro.system.build.fingerprint=samsung/a15nsxx/a15:14/UP1A.231005.007/A155FXXU1AXA2:user/release-keys \
-            ro.system.build.id=UP1A.231005.007 \
-            ro.system.build.tags=release-keys \
-            ro.system.build.type=user \
-            ro.system.build.version.incremental=A155FXXU1AXA2 \
+            ro.product.system.model=SM-A225F \
+            ro.product.system.name=a22nsxx \
             ro.product.system_ext.brand=samsung \
-            ro.product.system_ext.device=a15 \
+            ro.product.system_ext.device=a22 \
             ro.product.system_ext.manufacturer=samsung \
-            ro.product.system_ext.model=SM-A155F \
-            ro.product.system_ext.name=a15nsxx \
-            ro.system_ext.build.fingerprint=samsung/a15nsxx/a15:14/UP1A.231005.007/A155FXXU1AXA2:user/release-keys \
-            ro.system_ext.build.id=UP1A.231005.007 \
-            ro.system_ext.build.tags=release-keys \
-            ro.system_ext.build.type=user \
-            ro.system_ext.build.version.incremental=A155FXXU1AXA2 \
+            ro.product.system_ext.model=SM-A225F \
+            ro.product.system_ext.name=a22nsxx \
             ro.product.vendor.brand=samsung \
-            ro.product.vendor.device=a15 \
+            ro.product.vendor.device=a22 \
             ro.product.vendor.manufacturer=samsung \
-            ro.product.vendor.model=SM-A155F \
-            ro.product.vendor.name=a15nsxx \
-            ro.vendor.build.fingerprint=samsung/a15nsxx/a15:14/UP1A.231005.007/A155FXXU1AXA2:user/release-keys \
-            ro.vendor.build.id=UP1A.231005.007 \
-            ro.vendor.build.tags=release-keys \
-            ro.vendor.build.type=user \
-            ro.vendor.build.version.incremental=A155FXXU1AXA2 \
-            ro.vendor.build.security_patch=2024-05-05 \
+            ro.product.vendor.model=SM-A225F \
+            ro.product.vendor.name=a22nsxx \
+            ro.product.odm.brand=samsung \
+            ro.product.odm.device=a22 \
+            ro.product.odm.manufacturer=samsung \
+            ro.product.odm.model=SM-A225F \
+            ro.product.odm.name=a22nsxx \
             ro.product.vendor_dlkm.brand=samsung \
-            ro.product.vendor_dlkm.device=a15 \
+            ro.product.vendor_dlkm.device=a22 \
             ro.product.vendor_dlkm.manufacturer=samsung \
-            ro.product.vendor_dlkm.model=SM-A155F \
-            ro.product.vendor_dlkm.name=a15nsxx \
-            ro.vendor_dlkm.build.fingerprint=samsung/a15nsxx/a15:14/UP1A.231005.007/A155FXXU1AXA2:user/release-keys \
-            ro.vendor_dlkm.build.id=UP1A.231005.007 \
-            ro.vendor_dlkm.build.tags=release-keys \
-            ro.vendor_dlkm.build.type=user \
-            ro.vendor_dlkm.build.version.incremental=A155FXXU1AXA2 \
+            ro.product.vendor_dlkm.model=SM-A225F \
+            ro.product.vendor_dlkm.name=a22nsxx \
             ro.dalvik.vm.native.bridge=0 \
             ro.adb.secure=0 \
-            ro.secure=0 \
-            ro.debuggable=1
+            ro.secure=1 \
+            ro.debuggable=0
 
           echo "⏳ Waiting for container to boot..."
           STATE="none"
           for i in $(seq 1 20); do
-            if ! sudo docker ps --format '{{.Names}}' | grep -q '^samsung_a15$'; then
-              echo "❌ Container is not running (crashed). Logs:"
-              sudo docker logs samsung_a15 || true
+            if ! sudo docker ps --format '{{.Names}}' | grep -q '^samsung_a22$'; then
+              echo "❌ Container is not running (crashed)."
+              sudo docker logs samsung_a22 || true
               exit 1
             fi
             timeout 10 adb connect localhost:5555 >/dev/null 2>&1 || true
             STATE=$(timeout 10 adb -s localhost:5555 get-state 2>/dev/null || echo "none")
-            echo "Attempt $i/20: state=$STATE"
             if [ "$STATE" = "device" ]; then
               echo "✅ Device is online"
               break
@@ -176,14 +156,13 @@ jobs:
 
           if [ "$STATE" != "device" ]; then
             echo "❌ Device never reached 'device' state. Container logs:"
-            sudo docker logs samsung_a15 || true
+            sudo docker logs samsung_a22 || true
             exit 1
           fi
 
           BOOT_COMPLETED="0"
           for i in $(seq 1 15); do
             BOOT_COMPLETED=$(timeout 10 adb -s localhost:5555 shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
-            echo "Boot check $i/15: sys.boot_completed=$BOOT_COMPLETED"
             if [ "$BOOT_COMPLETED" = "1" ]; then
               echo "✅ Boot completed"
               break
@@ -191,65 +170,35 @@ jobs:
             sleep 5
           done
 
-          if [ "$BOOT_COMPLETED" != "1" ]; then
-            echo "⚠️ Boot never reported completed. Container logs:"
-            sudo docker logs --tail 100 samsung_a15 || true
-            exit 1
-          fi
-
           timeout 10 adb -s localhost:5555 shell settings put global device_provisioned 1 || true
           timeout 10 adb -s localhost:5555 shell settings put secure user_setup_complete 1 || true
           timeout 10 adb -s localhost:5555 shell pm disable-user --user 0 com.google.android.setupwizard || true
           timeout 10 adb -s localhost:5555 shell settings put system screen_off_timeout 1800000 || true
 
           echo "🔁 Restarting container to apply settings..."
-          sudo docker restart samsung_a15
+          sudo docker restart samsung_a22
 
-          echo "⏳ Waiting for reconnect after restart..."
-          STATE="none"
-          for i in $(seq 1 20); do
-            if ! sudo docker ps --format '{{.Names}}' | grep -q '^samsung_a15$'; then
-              echo "❌ Container failed to restart. Logs:"
-              sudo docker logs samsung_a15 || true
-              exit 1
-            fi
-            timeout 10 adb connect localhost:5555 >/dev/null 2>&1 || true
-            STATE=$(timeout 10 adb -s localhost:5555 get-state 2>/dev/null || echo "none")
-            echo "Attempt $i/20: state=$STATE"
-            if [ "$STATE" = "device" ]; then
-              echo "✅ Device is back online after restart"
-              break
-            fi
-            sleep 5
-          done
-
-          if [ "$STATE" != "device" ]; then
-            echo "❌ Device never came back after restart. Container logs:"
-            sudo docker logs samsung_a15 || true
-            exit 1
-          fi
+          sleep 10
+          timeout 10 adb connect localhost:5555 >/dev/null 2>&1 || true
 
       - name: 💻 Open SSH Tunnel for ADB (Termux Connection)
         run: |
           tmate -S /tmp/tmate.sock new-session -d
           tmate -S /tmp/tmate.sock wait tmate-ready
           echo "========================================================="
-          echo "🛠️ للتحكم عبر Termux، انسخ الأمر التالي والصقه في هاتفك:"
+          echo "🛠️ Remote ADB Command (For Termux):"
           tmate -S /tmp/tmate.sock display -p '#{tmate_ssh}'
-          echo "💡 بعد الدخول، اكتب: adb -s localhost:5555 shell"
           echo "========================================================="
 
       - name: 🖥️ Start 60FPS Stream Server (ws-scrcpy)
         run: |
           sudo fuser -k 8000/tcp || true
-          
           curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
           sudo apt-get install -y nodejs
 
           git clone https://github.com/NetrisTV/ws-scrcpy.git
           cd ws-scrcpy
           npm install
-          
           npm start &
 
           echo "⏳ Waiting for ws-scrcpy to start..."
@@ -258,12 +207,11 @@ jobs:
 
           wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm64 -O cloudflared
           chmod +x cloudflared
-          
           ./cloudflared tunnel --url http://localhost:8000 2>&1 | tee /tmp/cf.log &
 
           sleep 10
           echo "========================================================="
-          echo "🚀 افتح الرابط ده في متصفح موبايلك للتحكم بالشاشة:"
+          echo "🚀 Web Stream URL:"
           grep -o 'https://.*trycloudflare.com' /tmp/cf.log | head -1
           echo "========================================================="
 
