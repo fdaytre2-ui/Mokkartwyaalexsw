@@ -15,16 +15,26 @@ jobs:
           echo "CPUs: $(nproc)"
           echo "RAM: $(free -h)"
 
-      - name: 🔧 Install Dependencies + Binder
+      - name: 🔧 Install Dependencies + Binder (The Core Fix)
         run: |
-          sudo apt update
-          sudo apt remove -y --purge containerd.io || true
-          sudo apt autoremove -y
-          sudo apt install -y docker.io adb unzip wget curl tmate
+          sudo apt-get update -qq
+          sudo apt-get remove -y --purge containerd.io || true
+          sudo apt-get autoremove -y
+          sudo apt-get install -y docker.io adb unzip wget curl tmate \
+            linux-modules-extra-$(uname -r)
           sudo systemctl enable --now docker
           sudo chmod 666 /var/run/docker.sock
-          sudo apt install -y linux-modules-extra-$(uname -r)
-          sudo modprobe binder_linux devices=binder,hwbinder,vndbinder || true
+
+          # binder — لازم ينجح وإلا مفيش فايدة
+          sudo modprobe binder_linux devices="binder,hwbinder,vndbinder" || {
+            echo "❌ binder failed"; sudo dmesg -T | tail -20; exit 1
+          }
+          echo "✅ binder: $(lsmod | grep binder | head -1)"
+
+          # ashmem — اختياري على Ubuntu 24
+          sudo modprobe ashmem_linux 2>/dev/null \
+            && echo "✅ ashmem loaded" \
+            || echo "⚠️ ashmem not found — use_memfd will handle it"
 
       - name: 📥 Download GApps & Build FUD Image
         run: |
@@ -44,14 +54,15 @@ jobs:
           
           sudo docker build -t redroid-a22-fud .
 
-      - name: 📱 Start Samsung A22 (Full Spoof)
+      - name: 📱 Start Samsung A22 (Full Spoof + memfd)
         timeout-minutes: 8
         run: |
-          # تشغيل الحاوية مع حقن البصمة الكاملة من خلال متغيرات الدوكر
+          # تشغيل الحاوية مع حقن البصمة الكاملة وإجبار memfd
           sudo docker run -itd --privileged --name samsung_a22 \
             -v ~/redroid_data:/data \
             -p 5555:5555 \
             redroid-a22-fud \
+            androidboot.use_memfd=true \
             androidboot.redroid_width=1080 \
             androidboot.redroid_height=2340 \
             androidboot.redroid_dpi=300 \
