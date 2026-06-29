@@ -1,15 +1,21 @@
-name: 🛠️ VMOS Interactive Debugger
+name: 🚀 VMOS-Killer Final (Screen + ADB Bypass)
 
 on:
   workflow_dispatch:
 
 jobs:
-  debug-session:
+  arm-redroid:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 360
 
     steps:
-      - name: 🔧 Install Dependencies + Binder
+      - name: ✅ Environment Check
+        run: |
+          echo "Architecture: $(uname -m)"
+          echo "CPUs: $(nproc)"
+          echo "RAM: $(free -h)"
+
+      - name: 🔧 Install Dependencies & Fix Kernel
         run: |
           sudo apt-get update -qq
           sudo apt-get remove -y --purge containerd.io || true
@@ -31,14 +37,103 @@ jobs:
           FROM redroid/redroid:13.0.0-latest
           COPY --from=extractor /tmp/gapps/system/ /system/
           EOF
-          sudo docker build -t redroid-debug .
+          sudo docker build -t redroid-stable .
 
-      - name: 💻 Open SSH Tunnel (Terminal Ready)
+      - name: 📱 Start Samsung A22 (The Ultimate VMOS Mix)
+        timeout-minutes: 8
+        run: |
+          sudo docker run -itd --privileged --name samsung_a22 \
+            -p 5555:5555 \
+            redroid-stable \
+            androidboot.use_memfd=true \
+            androidboot.redroid_gpu_mode=guest \
+            androidboot.authorize_adb_keys=0 \
+            androidboot.adb.secure=0 \
+            androidboot.debuggable=1 \
+            androidboot.secure=0 \
+            ro.adb.secure=0 \
+            ro.secure=0 \
+            ro.debuggable=1 \
+            ro.product.brand=samsung \
+            ro.product.manufacturer=samsung \
+            ro.product.model=SM-A225F \
+            ro.product.device=a22 \
+            ro.product.name=a22nstur \
+            ro.soc.manufacturer=Mediatek \
+            ro.soc.model=MT6769V/CT \
+            ro.build.fingerprint=samsung/a22nstur/a22:13/TP1A.220624.014/A225FXXU6DWE3:user/release-keys \
+            ro.build.id=TP1A.220624.014 \
+            ro.build.tags=release-keys \
+            ro.build.type=user \
+            ro.product.system.brand=samsung \
+            ro.product.system.device=a22 \
+            ro.product.system.manufacturer=samsung \
+            ro.product.system.model=SM-A225F \
+            ro.product.system.name=a22nsxx \
+            ro.product.vendor.brand=samsung \
+            ro.product.vendor.device=a22 \
+            ro.product.vendor.manufacturer=samsung \
+            ro.product.vendor.model=SM-A225F \
+            ro.product.vendor.name=a22nsxx \
+            ro.product.odm.brand=samsung \
+            ro.product.odm.device=a22 \
+            ro.product.odm.manufacturer=samsung \
+            ro.product.odm.model=SM-A225F \
+            ro.product.odm.name=a22nsxx \
+            ro.product.product.brand=samsung \
+            ro.product.product.device=a22 \
+            ro.product.product.manufacturer=samsung \
+            ro.product.product.model=SM-A225F \
+            ro.product.product.name=a22nsxx \
+            ro.system.build.fingerprint=samsung/a22nstur/a22:13/TP1A.220624.014/A225FXXU6DWE3:user/release-keys \
+            ro.system_ext.build.fingerprint=samsung/a22nstur/a22:13/TP1A.220624.014/A225FXXU6DWE3:user/release-keys \
+            ro.vendor.build.fingerprint=samsung/a22nstur/a22:13/TP1A.220624.014/A225FXXU6DWE3:user/release-keys \
+            ro.vendor_dlkm.build.fingerprint=samsung/a22nstur/a22:13/TP1A.220624.014/A225FXXU6DWE3:user/release-keys \
+            ro.odm.build.fingerprint=samsung/a22nstur/a22:13/TP1A.220624.014/A225FXXU6DWE3:user/release-keys \
+            ro.product.build.fingerprint=samsung/a22nstur/a22:13/TP1A.220624.014/A225FXXU6DWE3:user/release-keys
+
+          echo "⏳ Waiting for Android to boot..."
+          sleep 20
+
+      - name: 💻 Auto-Connect ADB & Tuning
+        run: |
+          echo "🔄 Restarting ADB server..."
+          adb kill-server
+          sleep 2
+          adb connect localhost:5555
+          sleep 3
+          echo "📱 ADB Devices List:"
+          adb devices
+          
+          echo "⚙️ Tuning Android Settings..."
+          adb shell settings put global device_provisioned 1 || true
+          adb shell settings put secure user_setup_complete 1 || true
+          adb shell pm disable-user --user 0 com.google.android.setupwizard || true
+          adb shell settings put system screen_off_timeout 1800000 || true
+
+      - name: 🖥️ Start 60FPS Stream Server (ws-scrcpy)
+        run: |
+          curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+          sudo apt-get install -y nodejs
+          git clone https://github.com/NetrisTV/ws-scrcpy.git
+          cd ws-scrcpy
+          npm install
+          npm start &
+          sleep 15
+          cd ..
+          wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm64 -O cloudflared
+          chmod +x cloudflared
+          ./cloudflared tunnel --url http://localhost:8000 2>&1 | tee /tmp/cf.log &
+          sleep 10
+          echo "========================================================="
+          echo "🚀 Web Stream URL (ادخل هنا عشان تشوف الشاشة):"
+          grep -o 'https://.*trycloudflare.com' /tmp/cf.log | head -1
+          echo "========================================================="
+          
+      - name: 🛡️ Tmate Terminal (For Debugging)
         run: |
           tmate -S /tmp/tmate.sock new-session -d
           tmate -S /tmp/tmate.sock wait tmate-ready
-          echo "========================================================="
-          echo "🛠️ السيرفر جاهز! انسخ الرابط ده وادخل من Termux:"
+          echo "🛠️ SSH Link:"
           tmate -S /tmp/tmate.sock display -p '#{tmate_ssh}'
-          echo "========================================================="
           sleep 20000
