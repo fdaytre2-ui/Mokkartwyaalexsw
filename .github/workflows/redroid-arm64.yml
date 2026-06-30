@@ -1,4 +1,4 @@
-name: 🚀 VMOS-Killer Final (Setup Enabled + Random ID & FUD)
+name: 🚀 VMOS-Killer Final (Setup Enabled + Anti-Rootbeer)
 
 on:
   workflow_dispatch:
@@ -58,7 +58,7 @@ jobs:
           echo "IMEI: $RANDOM_IMEI"
           echo "====================================="
           
-          # تشغيل الكونتينر بالتمويه الشامل (بدون إلغاء شاشة الإعدادات عشان الـ PAI يشتغل)
+          # تشغيل الكونتينر مع إغلاق ثغرات الروت (RW Paths & SELinux)
           sudo docker run -itd --privileged --name samsung_a22 \
             -p 5555:5555 \
             redroid-stable \
@@ -69,8 +69,9 @@ jobs:
             androidboot.redroid_dpi=320 \
             androidboot.authorize_adb_keys=0 \
             androidboot.adb.secure=0 \
-            androidboot.debuggable=1 \
-            androidboot.secure=0 \
+            androidboot.debuggable=0 \
+            androidboot.secure=1 \
+            androidboot.selinux=enforcing \
             androidboot.verifiedbootstate=green \
             androidboot.vbmeta.device_state=locked \
             androidboot.flash.locked=1 \
@@ -78,6 +79,8 @@ jobs:
             ro.adb.secure=0 \
             ro.secure=1 \
             ro.debuggable=0 \
+            ro.build.selinux=1 \
+            ro.build.selinux.enforce=1 \
             ro.product.brand=samsung \
             ro.product.manufacturer=samsung \
             ro.product.model=SM-A225F \
@@ -189,14 +192,18 @@ jobs:
           echo "Android ID: $RANDOM_ANDROID_ID"
           adb shell settings put secure android_id $RANDOM_ANDROID_ID || true
           
-          # إعدادات الشاشة ومنعها من الإغلاق أثناء الإعداد
+          # إعدادات الشاشة لمنعها من الإغلاق
           adb shell settings put system screen_off_timeout 1800000 || true
           
-          # إيقاظ الشاشة لتكون جاهزة للمستخدم
+          # محاولة إغلاق الثغرة الأمنية للمسارات عبر ADB
+          adb shell mount -o remount,ro /system || true
+          adb shell mount -o remount,ro /vendor || true
+          
+          # إيقاظ الشاشة
           adb shell input keyevent 224 || true
           adb shell input keyevent 82 || true
           
-          echo "✅ Device is ready! Setup Wizard is active to trigger Google Play auto-installs."
+          echo "✅ Device is ready! Setup Wizard is active."
 
       - name: 🖥️ Start 60FPS Stream Server (ws-scrcpy)
         run: |
@@ -213,7 +220,7 @@ jobs:
           ./cloudflared tunnel --url http://localhost:8000 2>&1 | tee /tmp/cf.log &
           sleep 10
           echo "========================================================="
-          echo "🚀 Web Stream URL (اضغط هنا لفتح الموبايل الجديد وإكمال الإعدادات):"
+          echo "🚀 Web Stream URL:"
           grep -o 'https://.*trycloudflare.com' /tmp/cf.log | head -1
           echo "========================================================="
           
