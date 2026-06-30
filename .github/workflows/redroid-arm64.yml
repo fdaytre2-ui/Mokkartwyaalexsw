@@ -1,4 +1,4 @@
-name: 🚀 VMOS-Killer Final (VMOS-Like + Safe FUD)
+name: 🚀 VMOS-Killer Final (VMOS-Like + Stable ADB)
 
 on:
   workflow_dispatch:
@@ -15,7 +15,7 @@ jobs:
           echo "CPUs: $(nproc)"
           echo "RAM: $(free -h)"
 
-      - name: 🔧 Install Dependencies & Kernel Fix
+      - name: 🔧 Install Dependencies
         run: |
           sudo apt-get update -qq
           sudo apt-get remove -y --purge containerd.io || true
@@ -27,9 +27,9 @@ jobs:
           sudo modprobe binder_linux devices="binder,hwbinder,vndbinder" || true
           sudo modprobe ashmem_linux 2>/dev/null || true
 
-      - name: 📥 Download GApps & Build Base Image
+      - name: 📥 Build Image with GApps
         run: |
-          wget https://github.com/MindTheGapps/13.0.0-arm64/releases/download/MindTheGapps-13.0.0-arm64-20231025_200931/MindTheGapps-13.0.0-arm64-20231025_200931.zip -O gapps.zip
+          wget -q https://github.com/MindTheGapps/13.0.0-arm64/releases/download/MindTheGapps-13.0.0-arm64-20231025_200931/MindTheGapps-13.0.0-arm64-20231025_200931.zip -O gapps.zip
           cat > Dockerfile << 'EOF'
           FROM ubuntu:22.04 AS extractor
           RUN apt-get update && apt-get install -y unzip
@@ -40,27 +40,19 @@ jobs:
           EOF
           sudo docker build -t redroid-stable .
 
-      - name: 📱 Start Samsung A22 (VMOS-Like)
-        timeout-minutes: 12
+      - name: 📱 Start Samsung A22 (VMOS Style)
         run: |
-          # 🎲 Random Identity Generation (FUD)
           RANDOM_SERIAL="R58$(tr -dc A-Z0-9 </dev/urandom | head -c 8)"
           RANDOM_MAC="02:00:00:$(openssl rand -hex 3 | sed 's/\(..\)/\1:/g; s/.$//')"
           RANDOM_UNIQUE=$(openssl rand -hex 8)
           RANDOM_PAD=$(tr -dc A-Z0-9 </dev/urandom | head -c 16)
           RANDOM_IMEI="35$(tr -dc 0-9 </dev/urandom | head -c 13)"
           RANDOM_ANDROID_ID=$(openssl rand -hex 8)
-          
-          echo "====================================="
-          echo "🆕 New Device Identity:"
-          echo "Serial: $RANDOM_SERIAL"
-          echo "IMEI: $RANDOM_IMEI"
-          echo "MAC: $RANDOM_MAC"
-          echo "====================================="
+
+          echo "New Device: $RANDOM_SERIAL | IMEI: $RANDOM_IMEI"
 
           sudo docker run -itd --privileged --name samsung_a22 \
             -p 5555:5555 \
-            --device /dev/dri/renderD128:/dev/dri/renderD128 \
             redroid-stable \
             androidboot.use_memfd=true \
             androidboot.redroid_gpu_mode=guest \
@@ -83,93 +75,55 @@ jobs:
             ro.product.manufacturer=samsung \
             ro.product.model=SM-A225F \
             ro.product.device=a22 \
-            ro.product.name=a22nstur \
             ro.soc.manufacturer=Mediatek \
             ro.soc.model=MT6769V/CT \
             ro.boot.hardware=mt6769t \
             ro.hardware=mt6769t \
             ro.board.platform=mt6768 \
-            ro.build.id=TP1A.220624.014 \
-            ro.build.tags=release-keys \
-            ro.build.type=user \
-            ro.build.version.incremental=A225FXXU6DWE3 \
-            ro.build.version.security_patch=2026-03-05 \
             ro.build.fingerprint=samsung/a22nstur/a22:13/TP1A.220624.014/A225FXXU6DWE3:user/release-keys \
-            ro.build.description="a22nsxx-user 13 TP1A.220624.014 A225FXXU6DWE3 release-keys" \
-            ro.build.display.id="TP1A.220624.014.A225FXXU6DWE3" \
-            ro.build.flavor=a22nsxx-user \
-            ro.build.user=dpi \
-            ro.build.host=21DKGB24 \
-            ro.product.system.brand=samsung \
-            ro.product.system.device=a22 \
-            ro.product.system.manufacturer=samsung \
-            ro.product.system.model=SM-A225F \
-            ro.product.system.name=a22nsxx \
-            ro.product.vendor.brand=samsung \
-            ro.product.vendor.device=a22 \
-            ro.product.vendor.manufacturer=samsung \
-            ro.product.vendor.model=SM-A225F \
-            ro.product.vendor.name=a22nsxx \
-            ro.product.odm.brand=samsung \
-            ro.product.odm.device=a22 \
-            ro.product.odm.manufacturer=samsung \
-            ro.product.odm.model=SM-A225F \
-            ro.product.odm.name=a22nsxx \
             ro.boot.serialno=$RANDOM_SERIAL \
             ro.serialno=$RANDOM_SERIAL \
-            ro.boot.wifimacaddr=$RANDOM_MAC \
-            ro.boot.btmacaddr=$RANDOM_MAC \
             ro.boot.uniqueno=$RANDOM_UNIQUE \
             ro.boot.pad_code=$RANDOM_PAD \
-            ro.boot.cluster_code=ZEG3924128 \
             persist.sys.cloud.imeinum=$RANDOM_IMEI \
             persist.sys.cloud.drm.id=qAePufnxUcHNjQvdmHyp6CkQkuey5zyKQWlE7OidSBg= \
             persist.sys.cloud.drm.sid=8522 \
             persist.sys.cloud.battery.capacity=4860 \
-            persist.sys.cloud.battery.level=55 \
-            persist.sys.cloud.gpu.gl_renderer=Mali-G52 MC2 \
-            persist.sys.cloud.proxy.type=socks5 \
-            persist.sys.cloud.proxy.mode=proxy \
-            persist.sys.cloud.madb_enable=0 \
             persist.sys.gms_disable=true \
             persist.sys.gms_lazy_start=true \
-            ro.sys.cloud.disk.datasize=53248786432 \
-            ro.sys.cloud.dmode=1 \
-            ro.sys.cloud.custom_feature=3 \
-            persist.sys.locale=en-US \
-            persist.sys.timezone=America/New_York
+            ro.sys.cloud.dmode=1
 
-          echo "⏳ Waiting for boot..."
-          sleep 40
+          echo "Waiting for boot (60s)..."
+          sleep 60
 
-      - name: 💻 ADB Setup & Randomization
+      - name: 🔗 Fix ADB Connection
         run: |
+          adb kill-server
+          sleep 3
           adb start-server
-          mkdir -p ~/.android
-          adb keygen ~/.android/adbkey || true
+          sleep 5
           
-          cat ~/.android/adbkey.pub | sudo docker exec -i samsung_a22 sh -c "
-            mkdir -p /data/misc/adb && 
-            cat > /data/misc/adb/adb_keys && 
-            chown 2000:2000 /data/misc/adb/adb_keys && 
-            chmod 600 /data/misc/adb/adb_keys
-          "
-          
-          sudo docker exec samsung_a22 setprop ctl.restart adbd
-          sleep 6
-          
+          # Force connect to the correct device
           adb connect localhost:5555
-          sleep 4
+          sleep 8
           
-          # Extra Randomization
+          # Kill any ghost devices
+          adb devices | grep emulator-5554 && adb -s emulator-5554 emu kill || true
+          
+          echo "Connected devices:"
+          adb devices
+
+      - name: ⚙️ Post Setup (Random + Google Play Ready)
+        run: |
           adb shell settings put secure android_id $RANDOM_ANDROID_ID
           adb shell settings put system screen_off_timeout 1800000
           adb shell input keyevent 224
           adb shell input keyevent 82
           
-          echo "✅ Device Ready (Setup Wizard Active)"
+          echo "✅ Device is ready with Setup Wizard active."
+          echo "You can now continue manually via ADB or Tmate."
 
-      - name: 🖥️ Start ws-scrcpy Stream
+      - name: 🖥️ Start ws-scrcpy + Cloudflare
         run: |
           curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
           sudo apt-get install -y nodejs
@@ -181,14 +135,12 @@ jobs:
           chmod +x cloudflared
           ./cloudflared tunnel --url http://localhost:8000 2>&1 | tee /tmp/cf.log &
           
-          echo "========================================================="
-          echo "🚀 Web Stream URL:"
+          echo "🌐 Stream URL:"
           grep -o 'https://.*trycloudflare.com' /tmp/cf.log | head -1
-          echo "========================================================="
 
-      - name: 🛡️ Tmate Access
+      - name: 🛡️ Tmate (SSH Access)
         run: |
           tmate -S /tmp/tmate.sock new-session -d
           tmate -S /tmp/tmate.sock wait tmate-ready
-          echo "SSH: $(tmate -S /tmp/tmate.sock display -p '#{tmate_ssh}')"
-          sleep 30000
+          echo "🔗 Tmate SSH: $(tmate -S /tmp/tmate.sock display -p '#{tmate_ssh}')"
+          sleep 36000  # Keep alive long time
