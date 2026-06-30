@@ -1,4 +1,4 @@
-name: 🚀 VMOS-Killer Pro (Samsung A22 + FUD + Deep Hardware Spoof)
+name: 🚀 VMOS-Killer Pro Max (Stable A22 + FUD + ADB Fixed)
 
 on:
   workflow_dispatch:
@@ -24,59 +24,31 @@ jobs:
           sudo systemctl enable --now docker
           sudo chmod 666 /var/run/docker.sock
           
-          # تفعيل خدمات الكيرنل الأساسية
           sudo modprobe binder_linux devices="binder,hwbinder,vndbinder" || true
           sudo modprobe ashmem_linux 2>/dev/null || true
 
-      - name: 📥 Download GApps & Build Super Image (MT6769 Spoofing)
+      - name: 📥 Download GApps & Build Base Image
         run: |
           wget https://github.com/MindTheGapps/13.0.0-arm64/releases/download/MindTheGapps-13.0.0-arm64-20231025_200931/MindTheGapps-13.0.0-arm64-20231025_200931.zip -O gapps.zip
           cat > Dockerfile << 'EOF'
-          # 1. سحب النظام الأساسي
-          FROM redroid/redroid:13.0.0-latest AS redroid_base
-
-          # 2. بيئة العمل واستخراج GApps
           FROM ubuntu:22.04 AS extractor
           RUN apt-get update && apt-get install -y unzip
           ADD gapps.zip /gapps.zip
           RUN mkdir -p /tmp/gapps && unzip /gapps.zip -d /tmp/gapps
-          
-          # 3. السحر الهندسي: استنساخ وتغيير أسماء تعريفات الشاشة لمعالج A22 (MT6769)
-          COPY --from=redroid_base /vendor/etc/init/init.redroid.rc /tmp/init.mt6769.rc
-          COPY --from=redroid_base /vendor/lib/hw/gralloc.redroid.so /tmp/gralloc.mt6769.so
-          COPY --from=redroid_base /vendor/lib/hw/hwcomposer.redroid.so /tmp/hwcomposer.mt6769.so
-          COPY --from=redroid_base /vendor/lib64/hw/gralloc.redroid.so /tmp/gralloc64.mt6769.so
-          COPY --from=redroid_base /vendor/lib64/hw/hwcomposer.redroid.so /tmp/hwcomposer64.mt6769.so
-
-          # 4. بناء النظام النهائي ودمج الملفات
           FROM redroid/redroid:13.0.0-latest
           COPY --from=extractor /tmp/gapps/system/ /system/
-          
-          # 5. حقن التعريفات المموهة داخل النظام
-          COPY --from=extractor /tmp/init.mt6769.rc /vendor/etc/init/init.mt6769.rc
-          COPY --from=extractor /tmp/gralloc.mt6769.so /vendor/lib/hw/gralloc.mt6769.so
-          COPY --from=extractor /tmp/hwcomposer.mt6769.so /vendor/lib/hw/hwcomposer.mt6769.so
-          COPY --from=extractor /tmp/gralloc64.mt6769.so /vendor/lib64/hw/gralloc.mt6769.so
-          COPY --from=extractor /tmp/hwcomposer64.mt6769.so /vendor/lib64/hw/hwcomposer.mt6769.so
           EOF
           sudo docker build -t redroid-a22-super .
 
       - name: 📱 Start Samsung A22 (The Ultimate Factory)
-        timeout-minutes: 15
         run: |
-          # 🎲 محرك التوليد العشوائي لهوية الجهاز
           RANDOM_SERIAL="R58$(tr -dc A-Z0-9 </dev/urandom | head -c 8)"
           RANDOM_MAC="02:00:00:$(openssl rand -hex 3 | sed 's/\(..\)/\1:/g; s/.$//')"
           RANDOM_UNIQUE=$(openssl rand -hex 8)
           RANDOM_PAD=$(tr -dc A-Z0-9 </dev/urandom | head -c 16)
           RANDOM_IMEI="35$(tr -dc 0-9 </dev/urandom | head -c 13)"
           
-          echo "====================================="
-          echo "🆕 Generating New Device Identity:"
-          echo "Serial: $RANDOM_SERIAL"
-          echo "MAC: $RANDOM_MAC"
-          echo "IMEI: $RANDOM_IMEI"
-          echo "====================================="
+          echo "🆕 Generating New Identity: Serial=$RANDOM_SERIAL | IMEI=$RANDOM_IMEI"
           
           sudo docker run -itd --privileged --name samsung_a22 \
             -p 5555:5555 \
@@ -100,9 +72,6 @@ jobs:
             ro.hardware=mt6769 \
             ro.boot.hardware=mt6769 \
             ro.board.platform=mt6769 \
-            ro.hardware.gralloc=mt6769 \
-            ro.hardware.egl=mali \
-            ro.hardware.vulkan=mali \
             ro.product.brand=samsung \
             ro.product.manufacturer=samsung \
             ro.product.model=SM-A225F \
@@ -177,40 +146,12 @@ jobs:
             ro.boot.pad_code=$RANDOM_PAD \
             persist.sys.cloud.imeinum=$RANDOM_IMEI
 
+          echo "⏳ Waiting for Android to boot..."
+          sleep 20
 
-          echo "⏳ الخوارزمية الذكية: جاري فحص حالة اتصال النظام (Smart Boot Check)..."
-          STATE="none"
-          for i in $(seq 1 20); do
-            if ! sudo docker ps --format '{{.Names}}' | grep -q '^samsung_a22$'; then
-              echo "❌ الحاوية توقفت عن العمل. السجلات:"
-              sudo docker logs samsung_a22 || true
-              exit 1
-            fi
-            timeout 10 adb connect localhost:5555 >/dev/null 2>&1 || true
-            STATE=$(timeout 10 adb -s localhost:5555 get-state 2>/dev/null || echo "none")
-            echo "محاولة $i/20: حالة الجهاز = $STATE"
-            if [ "$STATE" = "device" ]; then
-              echo "✅ الجهاز متصل برمجياً."
-              break
-            fi
-            sleep 5
-          done
-
-          echo "⏳ الخوارزمية الذكية: جاري انتظار اكتمال واجهة النظام (UI Boot)..."
-          BOOT_COMPLETED="0"
-          for i in $(seq 1 15); do
-            BOOT_COMPLETED=$(timeout 10 adb -s localhost:5555 shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
-            echo "فحص الإقلاع $i/15: sys.boot_completed=$BOOT_COMPLETED"
-            if [ "$BOOT_COMPLETED" = "1" ]; then
-              echo "✅ اكتمل الإقلاع بنجاح!"
-              break
-            fi
-            sleep 5
-          done
-
-      - name: 💻 ADB Connect & Setup Config
+      - name: 💻 ADB Authentication Backdoor (The Magic Fix)
         run: |
-          echo "🔄 حقن مفاتيح ADB الخاصة للتحكم..."
+          echo "🔄 زراعة مفاتيح التوثيق بالقوة داخل النظام..."
           mkdir -p ~/.android
           adb keygen ~/.android/adbkey || true
           cat ~/.android/adbkey.pub | sudo docker exec -i samsung_a22 sh -c "mkdir -p /data/misc/adb && cat > /data/misc/adb/adb_keys && chown 2000:2000 /data/misc/adb/adb_keys && chmod 600 /data/misc/adb/adb_keys"
@@ -219,54 +160,49 @@ jobs:
           
           adb kill-server
           adb connect localhost:5555
-          sleep 3
+          
+          echo "⏳ التأكد من استقرار الاتصال..."
+          for i in $(seq 1 10); do
+            STATE=$(adb -s localhost:5555 get-state 2>/dev/null || echo "none")
+            if [ "$STATE" = "device" ]; then
+              echo "✅ تم التوثيق بنجاح!"
+              break
+            fi
+            sleep 2
+          done
           
           # 🎲 توليد Android ID عشوائي وحقنه
           RANDOM_ANDROID_ID=$(openssl rand -hex 8)
-          echo "Android ID: $RANDOM_ANDROID_ID"
-          adb shell settings put secure android_id $RANDOM_ANDROID_ID || true
+          adb -s localhost:5555 shell settings put secure android_id $RANDOM_ANDROID_ID || true
           
-          # إعدادات الشاشة لمنع الإغلاق وتخطي شاشة القفل الأولى
-          adb shell settings put system screen_off_timeout 1800000 || true
-          adb shell input keyevent 224 || true
-          adb shell input keyevent 82 || true
-          
-          echo "✅ النظام جاهز بالكامل والتمويه نشط!"
+          # إعدادات الشاشة
+          adb -s localhost:5555 shell settings put system screen_off_timeout 1800000 || true
+          adb -s localhost:5555 shell input keyevent 224 || true
+          adb -s localhost:5555 shell input keyevent 82 || true
 
       - name: 🖥️ Start 60FPS Stream Server (ws-scrcpy)
         run: |
-          sudo fuser -k 8000/tcp || true
-          
           curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
           sudo apt-get install -y nodejs
-          
           git clone https://github.com/NetrisTV/ws-scrcpy.git
           cd ws-scrcpy
           npm install
           npm start &
-          
-          echo "⏳ جاري تشغيل سيرفر البث..."
-          sleep 15
+          sleep 10
           cd ..
-          
           wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm64 -O cloudflared
           chmod +x cloudflared
           ./cloudflared tunnel --url http://localhost:8000 2>&1 | tee /tmp/cf.log &
-          
-          sleep 10
+          sleep 8
           echo "========================================================="
-          echo "🚀 Web Stream URL (اضغط هنا لفتح الموبايل الجديد وإكمال الإعدادات):"
+          echo "🚀 Web Stream URL (رابط الشاشة):"
           grep -o 'https://.*trycloudflare.com' /tmp/cf.log | head -1
           echo "========================================================="
-
-      - name: 🛡️ Tmate Terminal (For Direct SSH / Termux Access)
+          
+      - name: 🛡️ Tmate Terminal
         run: |
           tmate -S /tmp/tmate.sock new-session -d
           tmate -S /tmp/tmate.sock wait tmate-ready
-          echo "========================================================="
-          echo "🛠️ للتحكم عبر Termux أو SSH السريع، استخدم الرابط التالي:"
+          echo "🛠️ SSH Link:"
           tmate -S /tmp/tmate.sock display -p '#{tmate_ssh}'
-          echo "💡 بعد الدخول، اكتب: adb -s localhost:5555 shell"
-          echo "========================================================="
-          
           sleep 20000
