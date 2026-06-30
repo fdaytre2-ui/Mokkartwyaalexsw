@@ -44,7 +44,7 @@ jobs:
       - name: 📱 Start Samsung A22 (The Ultimate Factory)
         timeout-minutes: 10
         run: |
-          # 🎲 محرك التوليد العشوائي (لكل ضغطة Run بيعمل جهاز بهوية جديدة)
+          # 🎲 محرك التوليد العشوائي
           RANDOM_SERIAL="R58$(tr -dc A-Z0-9 </dev/urandom | head -c 8)"
           RANDOM_MAC="02:00:00:$(openssl rand -hex 3 | sed 's/\(..\)/\1:/g; s/.$//')"
           RANDOM_UNIQUE=$(openssl rand -hex 8)
@@ -58,7 +58,7 @@ jobs:
           echo "IMEI: $RANDOM_IMEI"
           echo "====================================="
           
-          # تشغيل الكونتينر بالهوية الجديدة + مسح كل أثر للمحاكي
+          # تشغيل الكونتينر بالهوية الجديدة + مسح كل أثر للمحاكي وإلغاء شاشة الإعدادات
           sudo docker run -itd --privileged --name samsung_a22 \
             -p 5555:5555 \
             redroid-stable \
@@ -78,6 +78,7 @@ jobs:
             ro.adb.secure=0 \
             ro.secure=1 \
             ro.debuggable=0 \
+            ro.setupwizard.mode=DISABLED \
             ro.product.brand=samsung \
             ro.product.manufacturer=samsung \
             ro.product.model=SM-A225F \
@@ -85,16 +86,47 @@ jobs:
             ro.product.name=a22nstur \
             ro.soc.manufacturer=Mediatek \
             ro.soc.model=MT6769V/CT \
-            ro.build.fingerprint=samsung/a22nstur/a22:13/TP1A.220624.014/A225FXXU6DWE3:user/release-keys \
             ro.build.id=TP1A.220624.014 \
             ro.build.tags=release-keys \
             ro.build.type=user \
+            ro.build.version.incremental=A225FXXU6DWE3 \
             ro.build.description="a22nsxx-user 13 TP1A.220624.014 A225FXXU6DWE3 release-keys" \
             ro.build.display.id="TP1A.220624.014.A225FXXU6DWE3" \
             ro.build.flavor=a22nsxx-user \
             ro.build.user=dpi \
             ro.build.host=21DKGB24 \
             ro.build.product=a22 \
+            ro.build.fingerprint=samsung/a22nstur/a22:13/TP1A.220624.014/A225FXXU6DWE3:user/release-keys \
+            ro.system.build.id=TP1A.220624.014 \
+            ro.system.build.tags=release-keys \
+            ro.system.build.type=user \
+            ro.system.build.version.incremental=A225FXXU6DWE3 \
+            ro.system.build.fingerprint=samsung/a22nstur/a22:13/TP1A.220624.014/A225FXXU6DWE3:user/release-keys \
+            ro.system_ext.build.id=TP1A.220624.014 \
+            ro.system_ext.build.tags=release-keys \
+            ro.system_ext.build.type=user \
+            ro.system_ext.build.version.incremental=A225FXXU6DWE3 \
+            ro.system_ext.build.fingerprint=samsung/a22nstur/a22:13/TP1A.220624.014/A225FXXU6DWE3:user/release-keys \
+            ro.vendor.build.id=TP1A.220624.014 \
+            ro.vendor.build.tags=release-keys \
+            ro.vendor.build.type=user \
+            ro.vendor.build.version.incremental=A225FXXU6DWE3 \
+            ro.vendor.build.fingerprint=samsung/a22nstur/a22:13/TP1A.220624.014/A225FXXU6DWE3:user/release-keys \
+            ro.vendor_dlkm.build.id=TP1A.220624.014 \
+            ro.vendor_dlkm.build.tags=release-keys \
+            ro.vendor_dlkm.build.type=user \
+            ro.vendor_dlkm.build.version.incremental=A225FXXU6DWE3 \
+            ro.vendor_dlkm.build.fingerprint=samsung/a22nstur/a22:13/TP1A.220624.014/A225FXXU6DWE3:user/release-keys \
+            ro.odm.build.id=TP1A.220624.014 \
+            ro.odm.build.tags=release-keys \
+            ro.odm.build.type=user \
+            ro.odm.build.version.incremental=A225FXXU6DWE3 \
+            ro.odm.build.fingerprint=samsung/a22nstur/a22:13/TP1A.220624.014/A225FXXU6DWE3:user/release-keys \
+            ro.product.build.id=TP1A.220624.014 \
+            ro.product.build.tags=release-keys \
+            ro.product.build.type=user \
+            ro.product.build.version.incremental=A225FXXU6DWE3 \
+            ro.product.build.fingerprint=samsung/a22nstur/a22:13/TP1A.220624.014/A225FXXU6DWE3:user/release-keys \
             ro.product.system.brand=samsung \
             ro.product.system.device=a22 \
             ro.product.system.manufacturer=samsung \
@@ -125,12 +157,6 @@ jobs:
             ro.product.product.manufacturer=samsung \
             ro.product.product.model=SM-A225F \
             ro.product.product.name=a22nsxx \
-            ro.system.build.fingerprint=samsung/a22nstur/a22:13/TP1A.220624.014/A225FXXU6DWE3:user/release-keys \
-            ro.system_ext.build.fingerprint=samsung/a22nstur/a22:13/TP1A.220624.014/A225FXXU6DWE3:user/release-keys \
-            ro.vendor.build.fingerprint=samsung/a22nstur/a22:13/TP1A.220624.014/A225FXXU6DWE3:user/release-keys \
-            ro.vendor_dlkm.build.fingerprint=samsung/a22nstur/a22:13/TP1A.220624.014/A225FXXU6DWE3:user/release-keys \
-            ro.odm.build.fingerprint=samsung/a22nstur/a22:13/TP1A.220624.014/A225FXXU6DWE3:user/release-keys \
-            ro.product.build.fingerprint=samsung/a22nstur/a22:13/TP1A.220624.014/A225FXXU6DWE3:user/release-keys \
             ro.boot.serialno=$RANDOM_SERIAL \
             ro.serialno=$RANDOM_SERIAL \
             ro.boot.wifimacaddr=$RANDOM_MAC \
@@ -163,7 +189,7 @@ jobs:
           RANDOM_ANDROID_ID=$(openssl rand -hex 8)
           echo "Android ID: $RANDOM_ANDROID_ID"
           
-          echo "⚙️ NUKING Setup Wizard & Setting Identity..."
+          echo "⚙️ Setting Device as Provisioned..."
           adb shell settings put global setup_wizard_has_run 1 || true
           adb shell settings put secure user_setup_complete 1 || true
           adb shell settings put global device_provisioned 1 || true
@@ -182,8 +208,8 @@ jobs:
           # إجبار النظام على فتح الشاشة الرئيسية
           adb shell am start -c android.intent.category.HOME -a android.intent.action.MAIN || true
           
-          # السحر لقتل الشاشة السوداء: ريستارت لواجهة النظام عشان ترسم الشاشة من جديد
-          echo "🔄 Refreshing System UI to prevent Black Screen..."
+          # ريستارت لواجهة النظام لضمان عدم وجود أي شاشة سوداء
+          echo "🔄 Refreshing System UI to guarantee Home Screen..."
           adb shell killall com.android.systemui || true
           adb shell killall com.android.launcher3 || true
 
