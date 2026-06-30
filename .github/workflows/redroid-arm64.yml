@@ -1,4 +1,4 @@
-name: 🚀 VMOS-Killer Pro Max (Stable A22 + FUD + ADB Fixed)
+name: 🚀 VMOS-Killer Pro Max (Perfect A22 + Deep FUD)
 
 on:
   workflow_dispatch:
@@ -27,20 +27,34 @@ jobs:
           sudo modprobe binder_linux devices="binder,hwbinder,vndbinder" || true
           sudo modprobe ashmem_linux 2>/dev/null || true
 
-      - name: 📥 Download GApps & Build Base Image
+      - name: 📥 Build Super Image (GApps + Deep Hardware Spoof)
         run: |
           wget https://github.com/MindTheGapps/13.0.0-arm64/releases/download/MindTheGapps-13.0.0-arm64-20231025_200931/MindTheGapps-13.0.0-arm64-20231025_200931.zip -O gapps.zip
           cat > Dockerfile << 'EOF'
+          FROM redroid/redroid:13.0.0-latest AS redroid_base
           FROM ubuntu:22.04 AS extractor
           RUN apt-get update && apt-get install -y unzip
           ADD gapps.zip /gapps.zip
           RUN mkdir -p /tmp/gapps && unzip /gapps.zip -d /tmp/gapps
+          
+          # استنساخ ملفات الرسوميات وتسميتها بمعالج سامسونج لمنع الانهيار وكشف المحاكي
+          COPY --from=redroid_base /vendor/etc/init/init.redroid.rc /tmp/init.mt6769.rc
+          COPY --from=redroid_base /vendor/lib/hw/gralloc.redroid.so /tmp/gralloc.mt6769.so
+          COPY --from=redroid_base /vendor/lib/hw/hwcomposer.redroid.so /tmp/hwcomposer.mt6769.so
+          COPY --from=redroid_base /vendor/lib64/hw/gralloc.redroid.so /tmp/gralloc64.mt6769.so
+          COPY --from=redroid_base /vendor/lib64/hw/hwcomposer.redroid.so /tmp/hwcomposer64.mt6769.so
+          
           FROM redroid/redroid:13.0.0-latest
           COPY --from=extractor /tmp/gapps/system/ /system/
+          COPY --from=extractor /tmp/init.mt6769.rc /vendor/etc/init/init.mt6769.rc
+          COPY --from=extractor /tmp/gralloc.mt6769.so /vendor/lib/hw/gralloc.mt6769.so
+          COPY --from=extractor /tmp/hwcomposer.mt6769.so /vendor/lib/hw/hwcomposer.mt6769.so
+          COPY --from=extractor /tmp/gralloc64.mt6769.so /vendor/lib64/hw/gralloc.mt6769.so
+          COPY --from=extractor /tmp/hwcomposer64.mt6769.so /vendor/lib64/hw/hwcomposer.mt6769.so
           EOF
-          sudo docker build -t redroid-a22-super .
+          sudo docker build -t redroid-a22-perfect .
 
-      - name: 📱 Start Samsung A22 (The Ultimate Factory)
+      - name: 📱 Start Samsung A22 (Dynamic FUD Identity)
         run: |
           RANDOM_SERIAL="R58$(tr -dc A-Z0-9 </dev/urandom | head -c 8)"
           RANDOM_MAC="02:00:00:$(openssl rand -hex 3 | sed 's/\(..\)/\1:/g; s/.$//')"
@@ -48,11 +62,9 @@ jobs:
           RANDOM_PAD=$(tr -dc A-Z0-9 </dev/urandom | head -c 16)
           RANDOM_IMEI="35$(tr -dc 0-9 </dev/urandom | head -c 13)"
           
-          echo "🆕 Generating New Identity: Serial=$RANDOM_SERIAL | IMEI=$RANDOM_IMEI"
-          
           sudo docker run -itd --privileged --name samsung_a22 \
             -p 5555:5555 \
-            redroid-a22-super \
+            redroid-a22-perfect \
             androidboot.use_memfd=true \
             androidboot.redroid_gpu_mode=guest \
             androidboot.redroid_width=720 \
@@ -146,50 +158,34 @@ jobs:
             ro.boot.pad_code=$RANDOM_PAD \
             persist.sys.cloud.imeinum=$RANDOM_IMEI
 
-          echo "⏳ Waiting for Android to boot..."
-          sleep 20
+          echo "⏳ Waiting for Android to boot completely..."
+          for i in $(seq 1 30); do
+            BOOT_COMPLETED=$(sudo docker exec samsung_a22 getprop sys.boot_completed 2>/dev/null | tr -d '\r' || echo "0")
+            if [ "$BOOT_COMPLETED" = "1" ]; then
+              echo "✅ Boot completed successfully!"
+              break
+            fi
+            sleep 2
+          done
 
-      - name: 💻 ADB Authentication Backdoor (The Magic Fix)
+      - name: 💻 ADB Authentic Backdoor
         run: |
-          echo "🔄 زراعة مفاتيح التوثيق بالقوة داخل النظام..."
           mkdir -p ~/.android
           adb keygen ~/.android/adbkey || true
           cat ~/.android/adbkey.pub | sudo docker exec -i samsung_a22 sh -c "mkdir -p /data/misc/adb && cat > /data/misc/adb/adb_keys && chown 2000:2000 /data/misc/adb/adb_keys && chmod 600 /data/misc/adb/adb_keys"
           sudo docker exec samsung_a22 setprop ctl.restart adbd
           
-          echo "⏳ انتظار استقرار خدمة ADB داخل النظام..."
-          sleep 10
-          
+          sleep 5
           adb kill-server
-          adb start-server
+          adb connect localhost:5555
           
-          echo "⏳ محاولة الاتصال المتكررة (Bulletproof Connect)..."
-          for i in $(seq 1 15); do
-            adb connect localhost:5555 || true
-            STATE=$(adb -s localhost:5555 get-state 2>/dev/null || echo "none")
-            if [ "$STATE" = "device" ]; then
-              echo "✅ تم التوثيق والاتصال بنجاح!"
-              break
-            fi
-            echo "المحاولة $i/15 - الحالة: $STATE - جاري المحاولة مرة أخرى..."
-            sleep 3
-          done
-          
-          # التأكد النهائي لتجنب توقف السكريبت
-          if [ "$STATE" != "device" ]; then
-             echo "⚠️ فشل الاتصال، ولكن سنستمر لعل النظام يستجيب لاحقاً."
-          fi
-          
-          # 🎲 توليد Android ID عشوائي وحقنه
           RANDOM_ANDROID_ID=$(openssl rand -hex 8)
           adb -s localhost:5555 shell settings put secure android_id $RANDOM_ANDROID_ID || true
-          
-          # إعدادات الشاشة
           adb -s localhost:5555 shell settings put system screen_off_timeout 1800000 || true
           adb -s localhost:5555 shell input keyevent 224 || true
           adb -s localhost:5555 shell input keyevent 82 || true
 
-      - name: 🖥️ Start 60FPS Stream Server (ws-scrcpy)
+      - name: 🖥️ Start Stream Server
         run: |
           curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
           sudo apt-get install -y nodejs
@@ -204,7 +200,7 @@ jobs:
           ./cloudflared tunnel --url http://localhost:8000 2>&1 | tee /tmp/cf.log &
           sleep 8
           echo "========================================================="
-          echo "🚀 Web Stream URL (رابط الشاشة):"
+          echo "🚀 Web Stream URL:"
           grep -o 'https://.*trycloudflare.com' /tmp/cf.log | head -1
           echo "========================================================="
           
@@ -212,6 +208,5 @@ jobs:
         run: |
           tmate -S /tmp/tmate.sock new-session -d
           tmate -S /tmp/tmate.sock wait tmate-ready
-          echo "🛠️ SSH Link:"
           tmate -S /tmp/tmate.sock display -p '#{tmate_ssh}'
           sleep 20000
