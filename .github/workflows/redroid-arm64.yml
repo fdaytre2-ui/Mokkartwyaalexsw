@@ -1,4 +1,4 @@
-name: 🚀 VMOS-Killer Final (Auto-Bypass, Random ID & Full FUD)
+name: 🚀 VMOS-Killer Final (Setup Enabled + Random ID & FUD)
 
 on:
   workflow_dispatch:
@@ -44,7 +44,7 @@ jobs:
       - name: 📱 Start Samsung A22 (The Ultimate Factory)
         timeout-minutes: 10
         run: |
-          # 🎲 محرك التوليد العشوائي
+          # 🎲 محرك التوليد العشوائي لهوية الجهاز
           RANDOM_SERIAL="R58$(tr -dc A-Z0-9 </dev/urandom | head -c 8)"
           RANDOM_MAC="02:00:00:$(openssl rand -hex 3 | sed 's/\(..\)/\1:/g; s/.$//')"
           RANDOM_UNIQUE=$(openssl rand -hex 8)
@@ -58,7 +58,7 @@ jobs:
           echo "IMEI: $RANDOM_IMEI"
           echo "====================================="
           
-          # تشغيل الكونتينر بالهوية الجديدة + مسح كل أثر للمحاكي وإلغاء شاشة الإعدادات
+          # تشغيل الكونتينر بالتمويه الشامل (بدون إلغاء شاشة الإعدادات عشان الـ PAI يشتغل)
           sudo docker run -itd --privileged --name samsung_a22 \
             -p 5555:5555 \
             redroid-stable \
@@ -78,7 +78,6 @@ jobs:
             ro.adb.secure=0 \
             ro.secure=1 \
             ro.debuggable=0 \
-            ro.setupwizard.mode=DISABLED \
             ro.product.brand=samsung \
             ro.product.manufacturer=samsung \
             ro.product.model=SM-A225F \
@@ -168,7 +167,7 @@ jobs:
           echo "⏳ Waiting for Android to boot..."
           sleep 30
 
-      - name: 💻 ADB Connect & Setup Nuke
+      - name: 💻 ADB Connect & Setup Config
         run: |
           echo "🔄 Generating and Injecting ADB Keys..."
           adb start-server
@@ -188,30 +187,16 @@ jobs:
           # 🎲 توليد Android ID عشوائي وحقنه
           RANDOM_ANDROID_ID=$(openssl rand -hex 8)
           echo "Android ID: $RANDOM_ANDROID_ID"
-          
-          echo "⚙️ Setting Device as Provisioned..."
-          adb shell settings put global setup_wizard_has_run 1 || true
-          adb shell settings put secure user_setup_complete 1 || true
-          adb shell settings put global device_provisioned 1 || true
           adb shell settings put secure android_id $RANDOM_ANDROID_ID || true
           
-          adb shell pm disable-user --user 0 com.google.android.setupwizard || true
-          adb shell pm disable-user --user 0 com.android.provision || true
-          
+          # إعدادات الشاشة ومنعها من الإغلاق أثناء الإعداد
           adb shell settings put system screen_off_timeout 1800000 || true
-          adb shell setprop debug.sf.nobootanimation 1 || true
           
-          # إيقاظ الشاشة
+          # إيقاظ الشاشة لتكون جاهزة للمستخدم
           adb shell input keyevent 224 || true
           adb shell input keyevent 82 || true
           
-          # إجبار النظام على فتح الشاشة الرئيسية
-          adb shell am start -c android.intent.category.HOME -a android.intent.action.MAIN || true
-          
-          # ريستارت لواجهة النظام لضمان عدم وجود أي شاشة سوداء
-          echo "🔄 Refreshing System UI to guarantee Home Screen..."
-          adb shell killall com.android.systemui || true
-          adb shell killall com.android.launcher3 || true
+          echo "✅ Device is ready! Setup Wizard is active to trigger Google Play auto-installs."
 
       - name: 🖥️ Start 60FPS Stream Server (ws-scrcpy)
         run: |
@@ -228,7 +213,7 @@ jobs:
           ./cloudflared tunnel --url http://localhost:8000 2>&1 | tee /tmp/cf.log &
           sleep 10
           echo "========================================================="
-          echo "🚀 Web Stream URL (اضغط هنا لفتح الموبايل الجديد):"
+          echo "🚀 Web Stream URL (اضغط هنا لفتح الموبايل الجديد وإكمال الإعدادات):"
           grep -o 'https://.*trycloudflare.com' /tmp/cf.log | head -1
           echo "========================================================="
           
