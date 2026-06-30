@@ -1,4 +1,4 @@
-name: 🚀 VMOS-Killer Final (VMOS-Like + Stable ADB)
+name: 🚀 VMOS-Killer Final (Setup Enabled + Random ID & FUD)
 
 on:
   workflow_dispatch:
@@ -15,7 +15,7 @@ jobs:
           echo "CPUs: $(nproc)"
           echo "RAM: $(free -h)"
 
-      - name: 🔧 Install Dependencies
+      - name: 🔧 Install Dependencies & Fix Kernel
         run: |
           sudo apt-get update -qq
           sudo apt-get remove -y --purge containerd.io || true
@@ -24,12 +24,13 @@ jobs:
           sudo systemctl enable --now docker
           sudo chmod 666 /var/run/docker.sock
           
+          # تفعيل خدمات الكيرنل الأساسية
           sudo modprobe binder_linux devices="binder,hwbinder,vndbinder" || true
           sudo modprobe ashmem_linux 2>/dev/null || true
 
-      - name: 📥 Build Image with GApps
+      - name: 📥 Download GApps & Build Base Image
         run: |
-          wget -q https://github.com/MindTheGapps/13.0.0-arm64/releases/download/MindTheGapps-13.0.0-arm64-20231025_200931/MindTheGapps-13.0.0-arm64-20231025_200931.zip -O gapps.zip
+          wget https://github.com/MindTheGapps/13.0.0-arm64/releases/download/MindTheGapps-13.0.0-arm64-20231025_200931/MindTheGapps-13.0.0-arm64-20231025_200931.zip -O gapps.zip
           cat > Dockerfile << 'EOF'
           FROM ubuntu:22.04 AS extractor
           RUN apt-get update && apt-get install -y unzip
@@ -40,26 +41,32 @@ jobs:
           EOF
           sudo docker build -t redroid-stable .
 
-      - name: 📱 Start Samsung A22 (VMOS Style)
+      - name: 📱 Start Samsung A22 (The Ultimate Factory)
+        timeout-minutes: 10
         run: |
+          # 🎲 محرك التوليد العشوائي لهوية الجهاز
           RANDOM_SERIAL="R58$(tr -dc A-Z0-9 </dev/urandom | head -c 8)"
           RANDOM_MAC="02:00:00:$(openssl rand -hex 3 | sed 's/\(..\)/\1:/g; s/.$//')"
           RANDOM_UNIQUE=$(openssl rand -hex 8)
           RANDOM_PAD=$(tr -dc A-Z0-9 </dev/urandom | head -c 16)
           RANDOM_IMEI="35$(tr -dc 0-9 </dev/urandom | head -c 13)"
-          RANDOM_ANDROID_ID=$(openssl rand -hex 8)
-
-          echo "New Device: $RANDOM_SERIAL | IMEI: $RANDOM_IMEI"
-
+          
+          echo "====================================="
+          echo "🆕 Generating New Device Identity:"
+          echo "Serial: $RANDOM_SERIAL"
+          echo "MAC: $RANDOM_MAC"
+          echo "IMEI: $RANDOM_IMEI"
+          echo "====================================="
+          
+          # تشغيل الكونتينر بالتمويه الشامل (بدون إلغاء شاشة الإعدادات عشان الـ PAI يشتغل)
           sudo docker run -itd --privileged --name samsung_a22 \
             -p 5555:5555 \
             redroid-stable \
             androidboot.use_memfd=true \
             androidboot.redroid_gpu_mode=guest \
             androidboot.redroid_width=720 \
-            androidboot.redroid_height=1600 \
-            androidboot.redroid_dpi=300 \
-            androidboot.redroid_fps=60 \
+            androidboot.redroid_height=1280 \
+            androidboot.redroid_dpi=320 \
             androidboot.authorize_adb_keys=0 \
             androidboot.adb.secure=0 \
             androidboot.debuggable=1 \
@@ -75,72 +82,145 @@ jobs:
             ro.product.manufacturer=samsung \
             ro.product.model=SM-A225F \
             ro.product.device=a22 \
+            ro.product.name=a22nstur \
             ro.soc.manufacturer=Mediatek \
             ro.soc.model=MT6769V/CT \
-            ro.boot.hardware=mt6769t \
-            ro.hardware=mt6769t \
-            ro.board.platform=mt6768 \
+            ro.build.id=TP1A.220624.014 \
+            ro.build.tags=release-keys \
+            ro.build.type=user \
+            ro.build.version.incremental=A225FXXU6DWE3 \
+            ro.build.description="a22nsxx-user 13 TP1A.220624.014 A225FXXU6DWE3 release-keys" \
+            ro.build.display.id="TP1A.220624.014.A225FXXU6DWE3" \
+            ro.build.flavor=a22nsxx-user \
+            ro.build.user=dpi \
+            ro.build.host=21DKGB24 \
+            ro.build.product=a22 \
             ro.build.fingerprint=samsung/a22nstur/a22:13/TP1A.220624.014/A225FXXU6DWE3:user/release-keys \
+            ro.system.build.id=TP1A.220624.014 \
+            ro.system.build.tags=release-keys \
+            ro.system.build.type=user \
+            ro.system.build.version.incremental=A225FXXU6DWE3 \
+            ro.system.build.fingerprint=samsung/a22nstur/a22:13/TP1A.220624.014/A225FXXU6DWE3:user/release-keys \
+            ro.system_ext.build.id=TP1A.220624.014 \
+            ro.system_ext.build.tags=release-keys \
+            ro.system_ext.build.type=user \
+            ro.system_ext.build.version.incremental=A225FXXU6DWE3 \
+            ro.system_ext.build.fingerprint=samsung/a22nstur/a22:13/TP1A.220624.014/A225FXXU6DWE3:user/release-keys \
+            ro.vendor.build.id=TP1A.220624.014 \
+            ro.vendor.build.tags=release-keys \
+            ro.vendor.build.type=user \
+            ro.vendor.build.version.incremental=A225FXXU6DWE3 \
+            ro.vendor.build.fingerprint=samsung/a22nstur/a22:13/TP1A.220624.014/A225FXXU6DWE3:user/release-keys \
+            ro.vendor_dlkm.build.id=TP1A.220624.014 \
+            ro.vendor_dlkm.build.tags=release-keys \
+            ro.vendor_dlkm.build.type=user \
+            ro.vendor_dlkm.build.version.incremental=A225FXXU6DWE3 \
+            ro.vendor_dlkm.build.fingerprint=samsung/a22nstur/a22:13/TP1A.220624.014/A225FXXU6DWE3:user/release-keys \
+            ro.odm.build.id=TP1A.220624.014 \
+            ro.odm.build.tags=release-keys \
+            ro.odm.build.type=user \
+            ro.odm.build.version.incremental=A225FXXU6DWE3 \
+            ro.odm.build.fingerprint=samsung/a22nstur/a22:13/TP1A.220624.014/A225FXXU6DWE3:user/release-keys \
+            ro.product.build.id=TP1A.220624.014 \
+            ro.product.build.tags=release-keys \
+            ro.product.build.type=user \
+            ro.product.build.version.incremental=A225FXXU6DWE3 \
+            ro.product.build.fingerprint=samsung/a22nstur/a22:13/TP1A.220624.014/A225FXXU6DWE3:user/release-keys \
+            ro.product.system.brand=samsung \
+            ro.product.system.device=a22 \
+            ro.product.system.manufacturer=samsung \
+            ro.product.system.model=SM-A225F \
+            ro.product.system.name=a22nsxx \
+            ro.product.system_ext.brand=samsung \
+            ro.product.system_ext.device=a22 \
+            ro.product.system_ext.manufacturer=samsung \
+            ro.product.system_ext.model=SM-A225F \
+            ro.product.system_ext.name=a22nsxx \
+            ro.product.vendor.brand=samsung \
+            ro.product.vendor.device=a22 \
+            ro.product.vendor.manufacturer=samsung \
+            ro.product.vendor.model=SM-A225F \
+            ro.product.vendor.name=a22nsxx \
+            ro.product.vendor_dlkm.brand=samsung \
+            ro.product.vendor_dlkm.device=a22 \
+            ro.product.vendor_dlkm.manufacturer=samsung \
+            ro.product.vendor_dlkm.model=SM-A225F \
+            ro.product.vendor_dlkm.name=a22nsxx \
+            ro.product.odm.brand=samsung \
+            ro.product.odm.device=a22 \
+            ro.product.odm.manufacturer=samsung \
+            ro.product.odm.model=SM-A225F \
+            ro.product.odm.name=a22nsxx \
+            ro.product.product.brand=samsung \
+            ro.product.product.device=a22 \
+            ro.product.product.manufacturer=samsung \
+            ro.product.product.model=SM-A225F \
+            ro.product.product.name=a22nsxx \
             ro.boot.serialno=$RANDOM_SERIAL \
             ro.serialno=$RANDOM_SERIAL \
+            ro.boot.wifimacaddr=$RANDOM_MAC \
+            ro.boot.btmacaddr=$RANDOM_MAC \
             ro.boot.uniqueno=$RANDOM_UNIQUE \
             ro.boot.pad_code=$RANDOM_PAD \
-            persist.sys.cloud.imeinum=$RANDOM_IMEI \
-            persist.sys.cloud.drm.id=qAePufnxUcHNjQvdmHyp6CkQkuey5zyKQWlE7OidSBg= \
-            persist.sys.cloud.drm.sid=8522 \
-            persist.sys.cloud.battery.capacity=4860 \
-            persist.sys.gms_disable=true \
-            persist.sys.gms_lazy_start=true \
-            ro.sys.cloud.dmode=1
+            persist.sys.cloud.imeinum=$RANDOM_IMEI
 
-          echo "Waiting for boot (60s)..."
-          sleep 60
+          echo "⏳ Waiting for Android to boot..."
+          sleep 30
 
-      - name: 🔗 Fix ADB Connection
+      - name: 💻 ADB Connect & Setup Config
         run: |
-          adb kill-server
-          sleep 3
+          echo "🔄 Generating and Injecting ADB Keys..."
           adb start-server
+          sleep 2
+          mkdir -p ~/.android
+          adb keygen ~/.android/adbkey || true
+          cat ~/.android/adbkey.pub | sudo docker exec -i samsung_a22 sh -c "mkdir -p /data/misc/adb && cat > /data/misc/adb/adb_keys && chown 2000:2000 /data/misc/adb/adb_keys && chmod 600 /data/misc/adb/adb_keys"
+          sudo docker exec samsung_a22 setprop ctl.restart adbd
           sleep 5
           
-          # Force connect to the correct device
+          echo "🔄 Restarting ADB connection..."
+          adb kill-server
           adb connect localhost:5555
-          sleep 8
+          sleep 3
+          adb -s emulator-5554 emu kill || true
           
-          # Kill any ghost devices
-          adb devices | grep emulator-5554 && adb -s emulator-5554 emu kill || true
+          # 🎲 توليد Android ID عشوائي وحقنه
+          RANDOM_ANDROID_ID=$(openssl rand -hex 8)
+          echo "Android ID: $RANDOM_ANDROID_ID"
+          adb shell settings put secure android_id $RANDOM_ANDROID_ID || true
           
-          echo "Connected devices:"
-          adb devices
+          # إعدادات الشاشة ومنعها من الإغلاق أثناء الإعداد
+          adb shell settings put system screen_off_timeout 1800000 || true
+          
+          # إيقاظ الشاشة لتكون جاهزة للمستخدم
+          adb shell input keyevent 224 || true
+          adb shell input keyevent 82 || true
+          
+          echo "✅ Device is ready! Setup Wizard is active to trigger Google Play auto-installs."
 
-      - name: ⚙️ Post Setup (Random + Google Play Ready)
-        run: |
-          adb shell settings put secure android_id $RANDOM_ANDROID_ID
-          adb shell settings put system screen_off_timeout 1800000
-          adb shell input keyevent 224
-          adb shell input keyevent 82
-          
-          echo "✅ Device is ready with Setup Wizard active."
-          echo "You can now continue manually via ADB or Tmate."
-
-      - name: 🖥️ Start ws-scrcpy + Cloudflare
+      - name: 🖥️ Start 60FPS Stream Server (ws-scrcpy)
         run: |
           curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
           sudo apt-get install -y nodejs
           git clone https://github.com/NetrisTV/ws-scrcpy.git
-          cd ws-scrcpy && npm install && npm start &
+          cd ws-scrcpy
+          npm install
+          npm start &
+          sleep 15
           cd ..
-          
           wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm64 -O cloudflared
           chmod +x cloudflared
           ./cloudflared tunnel --url http://localhost:8000 2>&1 | tee /tmp/cf.log &
-          
-          echo "🌐 Stream URL:"
+          sleep 10
+          echo "========================================================="
+          echo "🚀 Web Stream URL (اضغط هنا لفتح الموبايل الجديد وإكمال الإعدادات):"
           grep -o 'https://.*trycloudflare.com' /tmp/cf.log | head -1
-
-      - name: 🛡️ Tmate (SSH Access)
+          echo "========================================================="
+          
+      - name: 🛡️ Tmate Terminal (For Debugging)
         run: |
           tmate -S /tmp/tmate.sock new-session -d
           tmate -S /tmp/tmate.sock wait tmate-ready
-          echo "🔗 Tmate SSH: $(tmate -S /tmp/tmate.sock display -p '#{tmate_ssh}')"
-          sleep 36000  # Keep alive long time
+          echo "🛠️ SSH Link:"
+          tmate -S /tmp/tmate.sock display -p '#{tmate_ssh}'
+          sleep 20000
