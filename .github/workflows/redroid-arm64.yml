@@ -1,4 +1,4 @@
-name: 🚀 VMOS-Killer Final (Setup Enabled + Anti-Rootbeer + Fix ADB)
+name: 🚀 VMOS-Killer Final (Setup Enabled + Anti-Rootbeer + Perfect ADB)
 
 on:
   workflow_dispatch:
@@ -50,13 +50,6 @@ jobs:
           RANDOM_UNIQUE=$(openssl rand -hex 8)
           RANDOM_PAD=$(tr -dc A-Z0-9 </dev/urandom | head -c 16)
           RANDOM_IMEI="35$(tr -dc 0-9 </dev/urandom | head -c 13)"
-          
-          echo "====================================="
-          echo "🆕 Generating New Device Identity:"
-          echo "Serial: $RANDOM_SERIAL"
-          echo "MAC: $RANDOM_MAC"
-          echo "IMEI: $RANDOM_IMEI"
-          echo "====================================="
           
           # تشغيل الكونتينر مع إغلاق ثغرات الروت (RW Paths & SELinux)
           sudo docker run -itd --privileged --name samsung_a22 \
@@ -170,32 +163,46 @@ jobs:
           echo "⏳ Waiting for Android to boot..."
           sleep 30
 
-      - name: 💻 ADB Connect & Setup Config
+      - name: 💻 ADB Connect & Setup Config (SELinux Bypass)
         run: |
-          echo "🔄 Generating and Injecting ADB Keys..."
+          echo "🔄 Resetting ADB..."
           adb kill-server
           sudo pkill -f adb || true
           adb start-server
           sleep 2
+          
           mkdir -p ~/.android
           adb keygen ~/.android/adbkey || true
+          
+          echo "🔑 Injecting Key and Bypassing SELinux block..."
+          # حقن المفتاح
           cat ~/.android/adbkey.pub | sudo docker exec -i samsung_a22 sh -c "mkdir -p /data/misc/adb && cat > /data/misc/adb/adb_keys && chown 2000:2000 /data/misc/adb/adb_keys && chmod 600 /data/misc/adb/adb_keys"
+          
+          # إعطاء المفتاح تصريح جدار الحماية (SELinux) عشان الأندرويد ميطردناش
+          sudo docker exec samsung_a22 sh -c "chcon u:object_r:adb_keys_file:s0 /data/misc/adb/adb_keys" || true
+          sudo docker exec samsung_a22 sh -c "restorecon /data/misc/adb/adb_keys" || true
+          
           sudo docker exec samsung_a22 setprop ctl.restart adbd
           
-          echo "⏳ Waiting for ADB Daemon to fully apply keys..."
-          sleep 12
+          echo "⏳ Waiting for ADB Daemon to reload..."
+          sleep 10
           
-          echo "🔄 Connecting ADB..."
+          echo "🔄 Connecting to device..."
           adb connect localhost:5555
           sleep 3
           
+          # لو ظهرت رسالة التأكيد في الخلفية، السكربت هيدوس Allow لوحده
+          echo "🖱️ Auto-clicking 'Allow USB Debugging' if it appears..."
+          sudo docker exec samsung_a22 input keyevent 22 || true
+          sudo docker exec samsung_a22 input keyevent 22 || true
+          sudo docker exec samsung_a22 input keyevent 66 || true
+          sleep 2
+          
           echo "🧹 Cleaning up ghost devices..."
           adb -s emulator-5554 emu kill || true
-          adb disconnect emulator-5554 || true
           
-          # 🎲 توليد Android ID عشوائي وحقنه (بأمر مخصص لجهازنا فقط)
+          # 🎲 توليد Android ID عشوائي وحقنه
           RANDOM_ANDROID_ID=$(openssl rand -hex 8)
-          echo "Android ID: $RANDOM_ANDROID_ID"
           adb -s localhost:5555 shell settings put secure android_id $RANDOM_ANDROID_ID || true
           
           # إعدادات الشاشة لمنعها من الإغلاق
@@ -209,7 +216,7 @@ jobs:
           adb -s localhost:5555 shell input keyevent 224 || true
           adb -s localhost:5555 shell input keyevent 82 || true
           
-          echo "✅ Device is ready! Setup Wizard is active."
+          echo "✅ Device is fully authorized and ready!"
 
       - name: 🖥️ Start 60FPS Stream Server (ws-scrcpy)
         run: |
