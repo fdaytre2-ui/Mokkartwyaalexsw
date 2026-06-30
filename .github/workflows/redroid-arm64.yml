@@ -1,4 +1,4 @@
-name: 🚀 VMOS-Killer Final (Stable Screen + FUD)
+name: 🚀 VMOS-Killer Final (Auto-Bypass, Random ID & Full FUD)
 
 on:
   workflow_dispatch:
@@ -41,9 +41,24 @@ jobs:
           EOF
           sudo docker build -t redroid-stable .
 
-      - name: 📱 Start Samsung A22 (The Ultimate VMOS Mix)
+      - name: 📱 Start Samsung A22 (The Ultimate Factory)
         timeout-minutes: 10
         run: |
+          # 🎲 محرك التوليد العشوائي (لكل ضغطة Run بيعمل جهاز بهوية جديدة)
+          RANDOM_SERIAL="R58$(tr -dc A-Z0-9 </dev/urandom | head -c 8)"
+          RANDOM_MAC="02:00:00:$(openssl rand -hex 3 | sed 's/\(..\)/\1:/g; s/.$//')"
+          RANDOM_UNIQUE=$(openssl rand -hex 8)
+          RANDOM_PAD=$(tr -dc A-Z0-9 </dev/urandom | head -c 16)
+          RANDOM_IMEI="35$(tr -dc 0-9 </dev/urandom | head -c 13)"
+          
+          echo "====================================="
+          echo "🆕 Generating New Device Identity:"
+          echo "Serial: $RANDOM_SERIAL"
+          echo "MAC: $RANDOM_MAC"
+          echo "IMEI: $RANDOM_IMEI"
+          echo "====================================="
+          
+          # تشغيل الكونتينر بالهوية الجديدة + مسح كل أثر للمحاكي
           sudo docker run -itd --privileged --name samsung_a22 \
             -p 5555:5555 \
             redroid-stable \
@@ -74,16 +89,32 @@ jobs:
             ro.build.id=TP1A.220624.014 \
             ro.build.tags=release-keys \
             ro.build.type=user \
+            ro.build.description="a22nsxx-user 13 TP1A.220624.014 A225FXXU6DWE3 release-keys" \
+            ro.build.display.id="TP1A.220624.014.A225FXXU6DWE3" \
+            ro.build.flavor=a22nsxx-user \
+            ro.build.user=dpi \
+            ro.build.host=21DKGB24 \
+            ro.build.product=a22 \
             ro.product.system.brand=samsung \
             ro.product.system.device=a22 \
             ro.product.system.manufacturer=samsung \
             ro.product.system.model=SM-A225F \
             ro.product.system.name=a22nsxx \
+            ro.product.system_ext.brand=samsung \
+            ro.product.system_ext.device=a22 \
+            ro.product.system_ext.manufacturer=samsung \
+            ro.product.system_ext.model=SM-A225F \
+            ro.product.system_ext.name=a22nsxx \
             ro.product.vendor.brand=samsung \
             ro.product.vendor.device=a22 \
             ro.product.vendor.manufacturer=samsung \
             ro.product.vendor.model=SM-A225F \
             ro.product.vendor.name=a22nsxx \
+            ro.product.vendor_dlkm.brand=samsung \
+            ro.product.vendor_dlkm.device=a22 \
+            ro.product.vendor_dlkm.manufacturer=samsung \
+            ro.product.vendor_dlkm.model=SM-A225F \
+            ro.product.vendor_dlkm.name=a22nsxx \
             ro.product.odm.brand=samsung \
             ro.product.odm.device=a22 \
             ro.product.odm.manufacturer=samsung \
@@ -99,17 +130,25 @@ jobs:
             ro.vendor.build.fingerprint=samsung/a22nstur/a22:13/TP1A.220624.014/A225FXXU6DWE3:user/release-keys \
             ro.vendor_dlkm.build.fingerprint=samsung/a22nstur/a22:13/TP1A.220624.014/A225FXXU6DWE3:user/release-keys \
             ro.odm.build.fingerprint=samsung/a22nstur/a22:13/TP1A.220624.014/A225FXXU6DWE3:user/release-keys \
-            ro.product.build.fingerprint=samsung/a22nstur/a22:13/TP1A.220624.014/A225FXXU6DWE3:user/release-keys
+            ro.product.build.fingerprint=samsung/a22nstur/a22:13/TP1A.220624.014/A225FXXU6DWE3:user/release-keys \
+            ro.boot.serialno=$RANDOM_SERIAL \
+            ro.serialno=$RANDOM_SERIAL \
+            ro.boot.wifimacaddr=$RANDOM_MAC \
+            ro.boot.btmacaddr=$RANDOM_MAC \
+            ro.boot.uniqueno=$RANDOM_UNIQUE \
+            ro.boot.pad_code=$RANDOM_PAD \
+            persist.sys.cloud.imeinum=$RANDOM_IMEI
 
           echo "⏳ Waiting for Android to boot..."
-          sleep 25
+          sleep 30
 
-      - name: 💻 Auto-Connect ADB & Screen Fix
+      - name: 💻 ADB Connect & Setup Nuke
         run: |
           echo "🔄 Generating and Injecting ADB Keys..."
           adb start-server
           sleep 2
-          # حقن المفتاح المولد حديثاً جوه الموبايل
+          mkdir -p ~/.android
+          adb keygen ~/.android/adbkey || true
           cat ~/.android/adbkey.pub | sudo docker exec -i samsung_a22 sh -c "mkdir -p /data/misc/adb && cat > /data/misc/adb/adb_keys && chown 2000:2000 /data/misc/adb/adb_keys && chmod 600 /data/misc/adb/adb_keys"
           sudo docker exec samsung_a22 setprop ctl.restart adbd
           sleep 5
@@ -117,24 +156,36 @@ jobs:
           echo "🔄 Restarting ADB connection..."
           adb kill-server
           adb connect localhost:5555
-          sleep 2
-          # مسح الجهاز الوهمي عشان ميحصلش تعارض في البث
+          sleep 3
           adb -s emulator-5554 emu kill || true
           
-          echo "📱 ADB Devices List (يجب أن يكون جهاز واحد متصل):"
-          adb devices
+          # 🎲 توليد Android ID عشوائي وحقنه
+          RANDOM_ANDROID_ID=$(openssl rand -hex 8)
+          echo "Android ID: $RANDOM_ANDROID_ID"
           
-          echo "⚙️ Bypassing Setup Wizard & Fixing Black Screen..."
-          adb shell settings put global device_provisioned 1 || true
+          echo "⚙️ NUKING Setup Wizard & Setting Identity..."
+          adb shell settings put global setup_wizard_has_run 1 || true
           adb shell settings put secure user_setup_complete 1 || true
+          adb shell settings put global device_provisioned 1 || true
+          adb shell settings put secure android_id $RANDOM_ANDROID_ID || true
+          
+          adb shell pm disable-user --user 0 com.google.android.setupwizard || true
+          adb shell pm disable-user --user 0 com.android.provision || true
+          
           adb shell settings put system screen_off_timeout 1800000 || true
           adb shell setprop debug.sf.nobootanimation 1 || true
-          adb shell pm disable-user --user 0 com.google.android.setupwizard || true
           
-          # إيقاظ الشاشة وفتح القفل الإجباري
+          # إيقاظ الشاشة
           adb shell input keyevent 224 || true
           adb shell input keyevent 82 || true
-          adb shell am start -a android.intent.action.MAIN -c android.intent.category.HOME || true
+          
+          # إجبار النظام على فتح الشاشة الرئيسية
+          adb shell am start -c android.intent.category.HOME -a android.intent.action.MAIN || true
+          
+          # السحر لقتل الشاشة السوداء: ريستارت لواجهة النظام عشان ترسم الشاشة من جديد
+          echo "🔄 Refreshing System UI to prevent Black Screen..."
+          adb shell killall com.android.systemui || true
+          adb shell killall com.android.launcher3 || true
 
       - name: 🖥️ Start 60FPS Stream Server (ws-scrcpy)
         run: |
@@ -151,7 +202,7 @@ jobs:
           ./cloudflared tunnel --url http://localhost:8000 2>&1 | tee /tmp/cf.log &
           sleep 10
           echo "========================================================="
-          echo "🚀 Web Stream URL (ادخل هنا عشان تشوف الشاشة):"
+          echo "🚀 Web Stream URL (اضغط هنا لفتح الموبايل الجديد):"
           grep -o 'https://.*trycloudflare.com' /tmp/cf.log | head -1
           echo "========================================================="
           
