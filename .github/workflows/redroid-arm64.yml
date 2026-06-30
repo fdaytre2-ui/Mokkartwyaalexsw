@@ -1,4 +1,4 @@
-name: 🚀 VMOS-Killer Final (Screen + ADB Bypass)
+name: 🚀 VMOS-Killer Final (Stable Screen + FUD)
 
 on:
   workflow_dispatch:
@@ -47,13 +47,20 @@ jobs:
             redroid-stable \
             androidboot.use_memfd=true \
             androidboot.redroid_gpu_mode=guest \
+            androidboot.redroid_width=720 \
+            androidboot.redroid_height=1280 \
+            androidboot.redroid_dpi=320 \
             androidboot.authorize_adb_keys=0 \
             androidboot.adb.secure=0 \
             androidboot.debuggable=1 \
             androidboot.secure=0 \
+            androidboot.verifiedbootstate=green \
+            androidboot.vbmeta.device_state=locked \
+            androidboot.flash.locked=1 \
+            androidboot.veritymode=enforcing \
             ro.adb.secure=0 \
-            ro.secure=0 \
-            ro.debuggable=1 \
+            ro.secure=1 \
+            ro.debuggable=0 \
             ro.product.brand=samsung \
             ro.product.manufacturer=samsung \
             ro.product.model=SM-A225F \
@@ -93,23 +100,36 @@ jobs:
             ro.product.build.fingerprint=samsung/a22nstur/a22:13/TP1A.220624.014/A225FXXU6DWE3:user/release-keys
 
           echo "⏳ Waiting for Android to boot..."
-          sleep 20
+          sleep 25
 
-      - name: 💻 Auto-Connect ADB & Tuning
+      - name: 💻 Auto-Connect ADB & Fix Black Screen
         run: |
-          echo "🔄 Restarting ADB server..."
-          adb kill-server
-          sleep 2
+          echo "🔄 Connecting ADB..."
           adb connect localhost:5555
           sleep 3
           echo "📱 ADB Devices List:"
           adb devices
           
-          echo "⚙️ Tuning Android Settings..."
+          echo "⚙️ Bypassing Setup Wizard & Fixing Black Screen..."
+          # تجاوز إعدادات جوجل الأولية
           adb shell settings put global device_provisioned 1 || true
           adb shell settings put secure user_setup_complete 1 || true
-          adb shell pm disable-user --user 0 com.google.android.setupwizard || true
+          
+          # إيقاف إغلاق الشاشة عشان متنامش واحنا شغالين
           adb shell settings put system screen_off_timeout 1800000 || true
+          
+          # إيقاف أنيميشن البوت لو معلق وبيسبب شاشة سوداء
+          adb shell setprop debug.sf.nobootanimation 1 || true
+          
+          # تعطيل الـ Setup Wizard
+          adb shell pm disable-user --user 0 com.google.android.setupwizard || true
+          
+          # إرسال أوامر إيقاظ للشاشة وفتح القفل
+          adb shell input keyevent 224 || true
+          adb shell input keyevent 82 || true
+          
+          # السطر ده إجباري: بيجبر النظام يفتح الـ Home Screen بدل ما يفضل واقف في الشاشة السوداء
+          adb shell am start -a android.intent.action.MAIN -c android.intent.category.HOME || true
 
       - name: 🖥️ Start 60FPS Stream Server (ws-scrcpy)
         run: |
