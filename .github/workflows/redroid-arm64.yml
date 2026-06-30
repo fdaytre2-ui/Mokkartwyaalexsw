@@ -156,20 +156,29 @@ jobs:
           adb keygen ~/.android/adbkey || true
           cat ~/.android/adbkey.pub | sudo docker exec -i samsung_a22 sh -c "mkdir -p /data/misc/adb && cat > /data/misc/adb/adb_keys && chown 2000:2000 /data/misc/adb/adb_keys && chmod 600 /data/misc/adb/adb_keys"
           sudo docker exec samsung_a22 setprop ctl.restart adbd
-          sleep 5
+          
+          echo "⏳ انتظار استقرار خدمة ADB داخل النظام..."
+          sleep 10
           
           adb kill-server
-          adb connect localhost:5555
+          adb start-server
           
-          echo "⏳ التأكد من استقرار الاتصال..."
-          for i in $(seq 1 10); do
+          echo "⏳ محاولة الاتصال المتكررة (Bulletproof Connect)..."
+          for i in $(seq 1 15); do
+            adb connect localhost:5555 || true
             STATE=$(adb -s localhost:5555 get-state 2>/dev/null || echo "none")
             if [ "$STATE" = "device" ]; then
-              echo "✅ تم التوثيق بنجاح!"
+              echo "✅ تم التوثيق والاتصال بنجاح!"
               break
             fi
-            sleep 2
+            echo "المحاولة $i/15 - الحالة: $STATE - جاري المحاولة مرة أخرى..."
+            sleep 3
           done
+          
+          # التأكد النهائي لتجنب توقف السكريبت
+          if [ "$STATE" != "device" ]; then
+             echo "⚠️ فشل الاتصال، ولكن سنستمر لعل النظام يستجيب لاحقاً."
+          fi
           
           # 🎲 توليد Android ID عشوائي وحقنه
           RANDOM_ANDROID_ID=$(openssl rand -hex 8)
