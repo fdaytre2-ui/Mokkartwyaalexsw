@@ -23,6 +23,8 @@ jobs:
           sudo apt-get install -y docker.io adb unzip wget curl tmate linux-modules-extra-$(uname -r)
           sudo systemctl enable --now docker
           sudo chmod 666 /var/run/docker.sock
+          
+          # تفعيل خدمات الكيرنل الأساسية
           sudo modprobe binder_linux devices="binder,hwbinder,vndbinder" || true
           sudo modprobe ashmem_linux 2>/dev/null || true
 
@@ -40,7 +42,7 @@ jobs:
           sudo docker build -t redroid-stable .
 
       - name: 📱 Start Samsung A22 (The Ultimate VMOS Mix)
-        timeout-minutes: 8
+        timeout-minutes: 10
         run: |
           sudo docker run -itd --privileged --name samsung_a22 \
             -p 5555:5555 \
@@ -102,33 +104,36 @@ jobs:
           echo "⏳ Waiting for Android to boot..."
           sleep 25
 
-      - name: 💻 Auto-Connect ADB & Fix Black Screen
+      - name: 💻 Auto-Connect ADB & Screen Fix
         run: |
-          echo "🔄 Connecting ADB..."
+          echo "🔄 Generating and Injecting ADB Keys..."
+          adb start-server
+          sleep 2
+          # حقن المفتاح المولد حديثاً جوه الموبايل
+          cat ~/.android/adbkey.pub | sudo docker exec -i samsung_a22 sh -c "mkdir -p /data/misc/adb && cat > /data/misc/adb/adb_keys && chown 2000:2000 /data/misc/adb/adb_keys && chmod 600 /data/misc/adb/adb_keys"
+          sudo docker exec samsung_a22 setprop ctl.restart adbd
+          sleep 5
+          
+          echo "🔄 Restarting ADB connection..."
+          adb kill-server
           adb connect localhost:5555
-          sleep 3
-          echo "📱 ADB Devices List:"
+          sleep 2
+          # مسح الجهاز الوهمي عشان ميحصلش تعارض في البث
+          adb -s emulator-5554 emu kill || true
+          
+          echo "📱 ADB Devices List (يجب أن يكون جهاز واحد متصل):"
           adb devices
           
           echo "⚙️ Bypassing Setup Wizard & Fixing Black Screen..."
-          # تجاوز إعدادات جوجل الأولية
           adb shell settings put global device_provisioned 1 || true
           adb shell settings put secure user_setup_complete 1 || true
-          
-          # إيقاف إغلاق الشاشة عشان متنامش واحنا شغالين
           adb shell settings put system screen_off_timeout 1800000 || true
-          
-          # إيقاف أنيميشن البوت لو معلق وبيسبب شاشة سوداء
           adb shell setprop debug.sf.nobootanimation 1 || true
-          
-          # تعطيل الـ Setup Wizard
           adb shell pm disable-user --user 0 com.google.android.setupwizard || true
           
-          # إرسال أوامر إيقاظ للشاشة وفتح القفل
+          # إيقاظ الشاشة وفتح القفل الإجباري
           adb shell input keyevent 224 || true
           adb shell input keyevent 82 || true
-          
-          # السطر ده إجباري: بيجبر النظام يفتح الـ Home Screen بدل ما يفضل واقف في الشاشة السوداء
           adb shell am start -a android.intent.action.MAIN -c android.intent.category.HOME || true
 
       - name: 🖥️ Start 60FPS Stream Server (ws-scrcpy)
