@@ -27,33 +27,21 @@ jobs:
           sudo modprobe binder_linux devices="binder,hwbinder,vndbinder" || true
           sudo modprobe ashmem_linux 2>/dev/null || true
 
-      - name: 📥 Build Pre-Rooted Image (Kitsune + GApps + HW Spoof)
+      - name: 📱 Start Samsung A22 (Dynamic FUD Identity + Rooted)
         run: |
-          cat > Dockerfile << 'EOF'
-          # استخدام النسخة الجاهزة التي تحتوي على روت (Kitsune) وخدمات جوجل
-          FROM fahaddz/redroid:13-arm-pi5
-          
-          USER root
-          # استنساخ ملفات الرسوميات وتسميتها بمعالج سامسونج لمنع الانهيار وكشف المحاكي
-          RUN cp /vendor/etc/init/init.redroid.rc /vendor/etc/init/init.mt6769.rc || true
-          RUN cp /vendor/lib/hw/gralloc.redroid.so /vendor/lib/hw/gralloc.mt6769.so || true
-          RUN cp /vendor/lib/hw/hwcomposer.redroid.so /vendor/lib/hw/hwcomposer.mt6769.so || true
-          RUN cp /vendor/lib64/hw/gralloc.redroid.so /vendor/lib64/hw/gralloc.mt6769.so || true
-          RUN cp /vendor/lib64/hw/hwcomposer.redroid.so /vendor/lib64/hw/hwcomposer.mt6769.so || true
-          EOF
-          sudo docker build -t redroid-a22-perfect .
+          # سحب الصورة المدمج فيها الروت وخدمات جوجل مباشرة
+          sudo docker pull fahaddz/redroid:13-arm-pi5
 
-      - name: 📱 Start Samsung A22 (Dynamic FUD Identity)
-        run: |
           RANDOM_SERIAL="R58$(tr -dc A-Z0-9 </dev/urandom | head -c 8)"
           RANDOM_MAC="02:00:00:$(openssl rand -hex 3 | sed 's/\(..\)/\1:/g; s/.$//')"
           RANDOM_UNIQUE=$(openssl rand -hex 8)
           RANDOM_PAD=$(tr -dc A-Z0-9 </dev/urandom | head -c 16)
           RANDOM_IMEI="35$(tr -dc 0-9 </dev/urandom | head -c 13)"
           
+          # تشغيل الوحش بكل الـ Props بتاعتك الناجحة
           sudo docker run -itd --privileged --name samsung_a22 \
             -p 5555:5555 \
-            redroid-a22-perfect \
+            fahaddz/redroid:13-arm-pi5 \
             androidboot.use_memfd=true \
             androidboot.redroid_gpu_mode=guest \
             androidboot.redroid_width=720 \
