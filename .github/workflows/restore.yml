@@ -1,0 +1,99 @@
+name: 🚀 Restore VMOS Backup
+
+on:
+  workflow_dispatch:
+
+jobs:
+  restore:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 360
+
+    steps:
+      - name: ✅ Install Requirements
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get remove -y --purge containerd.io || true
+          sudo apt-get autoremove -y
+          sudo apt-get install -y docker.io adb wget curl tmate linux-modules-extra-$(uname -r)
+
+          sudo systemctl enable --now docker
+          sudo chmod 666 /var/run/docker.sock
+
+          sudo modprobe binder_linux devices="binder,hwbinder,vndbinder" || true
+          sudo modprobe ashmem_linux 2>/dev/null || true
+
+      - name: 📥 Download Backup Files
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+        run: |
+
+          wget --header="Authorization: Bearer $GH_PAT" \
+          -O vmos_image.tar.gz \
+          "https://github.com/fdaytre2-ui/Mokkartwyaalexsw/releases/download/v1.0-Perfect/vmos_image.tar.gz"
+
+          wget --header="Authorization: Bearer $GH_PAT" \
+          -O redroid_data_backup.tar.gz \
+          "https://github.com/fdaytre2-ui/Mokkartwyaalexsw/releases/download/v1.0-Perfect/redroid_data_backup.tar.gz"
+
+      - name: 🐳 Restore Docker Image
+        run: |
+          sudo docker load < vmos_image.tar.gz
+
+      - name: 📦 Restore Android Data
+        run: |
+          sudo rm -rf /home/runner/redroid_data
+          sudo tar -C /home/runner -xzpf redroid_data_backup.tar.gz
+
+      - name: 📱 Start Android
+        run: |
+
+          sudo docker rm -f samsung_a22 || true
+
+          sudo docker run -itd \
+            --privileged \
+            --name samsung_a22 \
+            -v /home/runner/redroid_data:/data \
+            -p 5555:5555 \
+            vmos-perfect-image
+
+          echo "Waiting Android..."
+          sleep 35
+
+      - name: 🔑 Enable ADB
+        run: |
+
+          mkdir -p ~/.android
+
+          adb keygen ~/.android/adbkey || true
+
+          cat ~/.android/adbkey.pub | sudo docker exec -i samsung_a22 sh -c \
+          "mkdir -p /data/misc/adb && \
+          cat >/data/misc/adb/adb_keys && \
+          chown 2000:2000 /data/misc/adb/adb_keys && \
+          chmod 600 /data/misc/adb/adb_keys"
+
+          sudo docker exec samsung_a22 setprop ctl.restart adbd
+
+          sleep 5
+
+          adb kill-server
+          adb connect localhost:5555
+
+          adb -s localhost:5555 shell input keyevent 224
+          adb -s localhost:5555 shell input keyevent 82
+
+          adb devices
+
+      - name: 🛡️ Start Tmate
+        run: |
+
+          tmate -S /tmp/tmate.sock new-session -d
+
+          tmate -S /tmp/tmate.sock wait tmate-ready
+
+          echo "======================================="
+          echo "SSH:"
+          tmate -S /tmp/tmate.sock display -p '#{tmate_ssh}'
+          echo "======================================="
+
+          sleep 20000
