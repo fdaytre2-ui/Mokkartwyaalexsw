@@ -27,11 +27,34 @@ jobs:
           sudo modprobe binder_linux devices="binder,hwbinder,vndbinder" || true
           sudo modprobe ashmem_linux 2>/dev/null || true
 
-      - name: 📥 Pull Pre-built Image (Android 13 + Magisk + GApps)
+      - name: 📥 Build Super Image (GApps + Deep Hardware Spoof)
         run: |
-          docker pull fahaddz/redroid:13-arm-pi5
+          wget https://github.com/MindTheGapps/13.0.0-arm64/releases/download/MindTheGapps-13.0.0-arm64-20231025_200931/MindTheGapps-13.0.0-arm64-20231025_200931.zip -O gapps.zip
+          cat > Dockerfile << 'EOF'
+          FROM redroid/redroid:13.0.0-latest AS redroid_base
+          FROM ubuntu:22.04 AS extractor
+          RUN apt-get update && apt-get install -y unzip
+          ADD gapps.zip /gapps.zip
+          RUN mkdir -p /tmp/gapps && unzip /gapps.zip -d /tmp/gapps
+          
+          # استنساخ ملفات الرسوميات وتسميتها بمعالج سامسونج لمنع الانهيار وكشف المحاكي
+          COPY --from=redroid_base /vendor/etc/init/init.redroid.rc /tmp/init.mt6769.rc
+          COPY --from=redroid_base /vendor/lib/hw/gralloc.redroid.so /tmp/gralloc.mt6769.so
+          COPY --from=redroid_base /vendor/lib/hw/hwcomposer.redroid.so /tmp/hwcomposer.mt6769.so
+          COPY --from=redroid_base /vendor/lib64/hw/gralloc.redroid.so /tmp/gralloc64.mt6769.so
+          COPY --from=redroid_base /vendor/lib64/hw/hwcomposer.redroid.so /tmp/hwcomposer64.mt6769.so
+          
+          FROM redroid/redroid:13.0.0-latest
+          COPY --from=extractor /tmp/gapps/system/ /system/
+          COPY --from=extractor /tmp/init.mt6769.rc /vendor/etc/init/init.mt6769.rc
+          COPY --from=extractor /tmp/gralloc.mt6769.so /vendor/lib/hw/gralloc.mt6769.so
+          COPY --from=extractor /tmp/hwcomposer.mt6769.so /vendor/lib/hw/hwcomposer.mt6769.so
+          COPY --from=extractor /tmp/gralloc64.mt6769.so /vendor/lib64/hw/gralloc.mt6769.so
+          COPY --from=extractor /tmp/hwcomposer64.mt6769.so /vendor/lib64/hw/hwcomposer.mt6769.so
+          EOF
+          sudo docker build -t redroid-a22-perfect .
 
-      - name: 📱 Start Samsung A22 (Dynamic FUD Identity) with Magisk
+      - name: 📱 Start Samsung A22 (Dynamic FUD Identity)
         run: |
           RANDOM_SERIAL="R58$(tr -dc A-Z0-9 </dev/urandom | head -c 8)"
           RANDOM_MAC="02:00:00:$(openssl rand -hex 3 | sed 's/\(..\)/\1:/g; s/.$//')"
@@ -41,7 +64,7 @@ jobs:
           
           sudo docker run -itd --privileged --name samsung_a22 \
             -p 5555:5555 \
-            fahaddz/redroid:13-arm-pi5 \
+            redroid-a22-perfect \
             androidboot.use_memfd=true \
             androidboot.redroid_gpu_mode=guest \
             androidboot.redroid_width=720 \
@@ -144,21 +167,6 @@ jobs:
             fi
             sleep 2
           done
-
-      - name: 🔓 Enable Magisk & Zygisk (optional)
-        run: |
-          # فتح تطبيق Magisk وتفعيل Zygisk (يعاد تشغيل الحاوية بعدها)
-          sudo docker exec samsung_a22 monkey -p io.github.huskydg.magisk -c android.intent.category.LAUNCHER 1
-          sleep 3
-          sudo docker exec samsung_a22 input tap 300 300   # اضغط على زر الإعدادات (قد يختلف)
-          sleep 2
-          sudo docker exec samsung_a22 input tap 500 200   # زر Zygisk (تقريبي)
-          sleep 2
-          sudo docker exec samsung_a22 input keyevent KEYCODE_BACK
-          sudo docker exec samsung_a22 input tap 200 100   # زر إعادة التشغيل (قد يحتاج تعديل)
-          sleep 5
-          sudo docker restart samsung_a22
-          sleep 20
 
       - name: 💻 ADB Authentic Backdoor
         run: |
