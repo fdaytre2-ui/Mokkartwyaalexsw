@@ -1,4 +1,4 @@
-Name: 🚀 VMOS-Killer Pro Max (Perfect A22 + Deep FUD)
+name: 🚀 VMOS-Killer Pro Max (Perfect A22 + Deep FUD)
 
 on:
   workflow_dispatch:
@@ -23,13 +23,13 @@ jobs:
           sudo apt-get install -y docker.io adb unzip wget curl tmate linux-modules-extra-$(uname -r)
           sudo systemctl enable --now docker
           sudo chmod 666 /var/run/docker.sock
-          
           sudo modprobe binder_linux devices="binder,hwbinder,vndbinder" || true
           sudo modprobe ashmem_linux 2>/dev/null || true
 
       - name: 📥 Build Super Image (GApps + Deep Hardware Spoof)
         run: |
           wget https://github.com/MindTheGapps/13.0.0-arm64/releases/download/MindTheGapps-13.0.0-arm64-20231025_200931/MindTheGapps-13.0.0-arm64-20231025_200931.zip -O gapps.zip
+          
           cat > Dockerfile << 'EOF'
           FROM redroid/redroid:13.0.0-latest AS redroid_base
           FROM ubuntu:22.04 AS extractor
@@ -46,15 +46,17 @@ jobs:
           
           FROM redroid/redroid:13.0.0-latest
           COPY --from=extractor /tmp/gapps/system/ /system/
+          
           COPY --from=extractor /tmp/init.mt6769.rc /vendor/etc/init/init.mt6769.rc
           COPY --from=extractor /tmp/gralloc.mt6769.so /vendor/lib/hw/gralloc.mt6769.so
           COPY --from=extractor /tmp/hwcomposer.mt6769.so /vendor/lib/hw/hwcomposer.mt6769.so
           COPY --from=extractor /tmp/gralloc64.mt6769.so /vendor/lib64/hw/gralloc.mt6769.so
           COPY --from=extractor /tmp/hwcomposer64.mt6769.so /vendor/lib64/hw/hwcomposer.mt6769.so
           EOF
+          
           sudo docker build -t redroid-a22-perfect .
 
-      - name: 📱 Start Samsung A22 (Dynamic FUD Identity)
+      - name: 📱 Start Samsung A22 (Dynamic FUD Identity & Real Resolution)
         run: |
           RANDOM_SERIAL="R58$(tr -dc A-Z0-9 </dev/urandom | head -c 8)"
           RANDOM_MAC="02:00:00:$(openssl rand -hex 3 | sed 's/\(..\)/\1:/g; s/.$//')"
@@ -68,8 +70,8 @@ jobs:
             androidboot.use_memfd=true \
             androidboot.redroid_gpu_mode=guest \
             androidboot.redroid_width=720 \
-            androidboot.redroid_height=1280 \
-            androidboot.redroid_dpi=320 \
+            androidboot.redroid_height=1600 \
+            androidboot.redroid_dpi=274 \
             androidboot.authorize_adb_keys=0 \
             androidboot.adb.secure=0 \
             androidboot.debuggable=1 \
@@ -157,7 +159,7 @@ jobs:
             ro.boot.uniqueno=$RANDOM_UNIQUE \
             ro.boot.pad_code=$RANDOM_PAD \
             persist.sys.cloud.imeinum=$RANDOM_IMEI
-
+            
           echo "⏳ Waiting for Android to boot completely..."
           for i in $(seq 1 30); do
             BOOT_COMPLETED=$(sudo docker exec samsung_a22 getprop sys.boot_completed 2>/dev/null | tr -d '\r' || echo "0")
@@ -178,7 +180,7 @@ jobs:
           sudo docker cp samsung_a22:/vendor/odm_dlkm/etc/build.prop ./odm_dlkm_etc_build.prop || true
           sudo docker cp samsung_a22:/system/product/etc/build.prop ./product_etc_build.prop || true
           sudo docker cp samsung_a22:/system/system_ext/etc/build.prop ./system_ext_etc_build.prop || true
-
+          
           echo "✍️ Wiping out any hardcoded 'frank' footprints..."
           sudo sed -i 's/eng.frank.20240527.132658/A225FXXU6DWE3/g' \
             ./system_build.prop \
@@ -188,7 +190,7 @@ jobs:
             ./odm_dlkm_etc_build.prop \
             ./product_etc_build.prop \
             ./system_ext_etc_build.prop 2>/dev/null || true
-
+            
           echo "📤 Re-injecting clean property files back to Android core..."
           sudo docker cp ./system_build.prop samsung_a22:/system/build.prop || true
           sudo docker cp ./vendor_build.prop samsung_a22:/vendor/build.prop || true
@@ -197,7 +199,7 @@ jobs:
           sudo docker cp ./odm_dlkm_etc_build.prop samsung_a22:/vendor/odm_dlkm/etc/build.prop || true
           sudo docker cp ./product_etc_build.prop samsung_a22:/system/product/etc/build.prop || true
           sudo docker cp ./system_ext_etc_build.prop samsung_a22:/system/system_ext/etc/build.prop || true
-
+          
           echo "🔄 Restarting container to lock-in the pure Samsung identity..."
           sudo docker restart samsung_a22
           
@@ -210,7 +212,7 @@ jobs:
             fi
             sleep 2
           done
-
+          
           echo "🔍 Running Anti-Frank sanity check..."
           sudo docker exec samsung_a22 getprop | grep frank || echo "✅ Clean target! Absolutely zero traces of frank detected."
 
@@ -220,11 +222,9 @@ jobs:
           adb keygen ~/.android/adbkey || true
           cat ~/.android/adbkey.pub | sudo docker exec -i samsung_a22 sh -c "mkdir -p /data/misc/adb && cat > /data/misc/adb/adb_keys && chown 2000:2000 /data/misc/adb/adb_keys && chmod 600 /data/misc/adb/adb_keys"
           sudo docker exec samsung_a22 setprop ctl.restart adbd
-          
           sleep 5
           adb kill-server
           adb connect localhost:5555
-          
           RANDOM_ANDROID_ID=$(openssl rand -hex 8)
           adb -s localhost:5555 shell settings put secure android_id $RANDOM_ANDROID_ID || true
           adb -s localhost:5555 shell settings put system screen_off_timeout 1800000 || true
@@ -249,7 +249,7 @@ jobs:
           echo "🚀 Web Stream URL:"
           grep -o 'https://.*trycloudflare.com' /tmp/cf.log | head -1
           echo "========================================================="
-          
+
       - name: 🛡️ Tmate Terminal
         run: |
           tmate -S /tmp/tmate.sock new-session -d
